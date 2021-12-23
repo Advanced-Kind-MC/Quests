@@ -12,13 +12,17 @@
 
 package me.blackvein.quests.convo;
 
+import me.blackvein.quests.util.Lang;
 import net.md_5.bungee.api.ChatColor;
 import net.md_5.bungee.api.chat.ClickEvent;
 import net.md_5.bungee.api.chat.TextComponent;
-import org.bukkit.conversations.Conversable;
+
+import org.bukkit.conversations.ConversationContext;
 import org.bukkit.conversations.StringPrompt;
 import org.bukkit.entity.Player;
 import org.bukkit.event.HandlerList;
+
+import me.blackvein.quests.Quests;
 
 import java.util.List;
 
@@ -49,12 +53,15 @@ public abstract class QuestsStringPrompt extends StringPrompt {
      * @param header  the menu header
      * @param list    a list of strings to display
      * @param footer  the menu footer
-     * @param forWhom the conversation participant
+     * @param context the conversation context
      * @return        plain text to deliver
      */
     protected String sendClickableMenu(final String header, final List<String> list, final String footer,
-                                       final Conversable forWhom) {
-        if (!(forWhom instanceof Player)) {
+                                       final ConversationContext context) {
+        if (context.getPlugin() == null) {
+            return Lang.get("itemCreateCriticalError");
+        }
+        if (!(context.getForWhom() instanceof Player) || !((Quests)context.getPlugin()).getSettings().canClickablePrompts()) {
             return ChatColor.GOLD + header + "\n" + ChatColor.AQUA + String.join(ChatColor.GRAY + ", " + ChatColor.AQUA, list) + "\n" + ChatColor.YELLOW + footer;
         }
         final TextComponent component = new TextComponent(header + "\n");
@@ -73,7 +80,7 @@ public abstract class QuestsStringPrompt extends StringPrompt {
             }
         }
         component.addExtra(footerComponent);
-        ((Player)forWhom).spigot().sendMessage(component);
+        ((Player)context.getForWhom()).spigot().sendMessage(component);
         return "";
     }
 }
