@@ -1,3 +1,15 @@
+/*
+ * Copyright (c) 2014 PikaMug and contributors. All rights reserved.
+ *
+ * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESSED OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+ * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN
+ * NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+ * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
 package me.blackvein.quests.player;
 
 import me.blackvein.quests.quests.IQuest;
@@ -52,8 +64,9 @@ public interface IQuester extends Comparable<IQuester> {
      * Get compass target quest. Returns null if not set
      *
      * @return Quest or null
+     * @deprecated Do not use
      */
-    IQuest getCompassTarget();
+    IQuest getCompassTargetTemp();
 
     /**
      * Set compass target quest. Does not update in-game
@@ -68,11 +81,17 @@ public interface IQuester extends Comparable<IQuester> {
 
     void removeTimer(final Integer timerId);
 
-    ConcurrentHashMap<IQuest, Integer> getCurrentQuests();
+    /**
+     * @deprecated Do not use
+     */
+    ConcurrentHashMap<IQuest, Integer> getCurrentQuestsTemp();
 
     void setCurrentQuests(final ConcurrentHashMap<IQuest, Integer> currentQuests);
 
-    ConcurrentSkipListSet<IQuest> getCompletedQuests();
+    /**
+     * @deprecated Do not use
+     */
+    ConcurrentSkipListSet<IQuest> getCompletedQuestsTemp();
 
     void setCompletedQuests(final ConcurrentSkipListSet<IQuest> completedQuests);
 
