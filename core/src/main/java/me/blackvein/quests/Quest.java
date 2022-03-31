@@ -31,6 +31,7 @@ import me.blackvein.quests.events.quester.QuesterPostFailQuestEvent;
 import me.blackvein.quests.events.quester.QuesterPreChangeStageEvent;
 import me.blackvein.quests.events.quester.QuesterPreCompleteQuestEvent;
 import me.blackvein.quests.events.quester.QuesterPreFailQuestEvent;
+import me.blackvein.quests.nms.TitleProvider;
 import me.blackvein.quests.player.IQuester;
 import me.blackvein.quests.quests.BukkitOptions;
 import me.blackvein.quests.quests.BukkitPlanner;
@@ -311,6 +312,9 @@ public class Quest implements IQuest {
         }
         final IStage currentStage = quester.getCurrentStage(this);
         final IStage nextStage = getStage(stage);
+        if (currentStage == null || nextStage == null) {
+            return;
+        }
         if (player.isOnline()) {
             final QuesterPreChangeStageEvent preEvent
                     = new QuesterPreChangeStageEvent((Quester) quester, this, currentStage, nextStage);
@@ -412,6 +416,7 @@ public class Quest implements IQuest {
             }
         }
         quester.updateJournal();
+        quester.saveData();
         if (player.isOnline()) {
             final QuesterPostChangeStageEvent postEvent
                     = new QuesterPostChangeStageEvent((Quester) quester, this, currentStage, nextStage);
@@ -455,6 +460,9 @@ public class Quest implements IQuest {
                         .getItemDeliveryTargets().getFirst());
                 targetLocation = npc.getStoredLocation();
             } else if (stage.getPlayersToKill() != null && stage.getPlayersToKill() > 0) {
+                if (quester.getPlayer() == null) {
+                    return;
+                }
                 final Location source = quester.getPlayer().getLocation();
                 Location nearest = null;
                 double old_distance = 30000000;
@@ -475,6 +483,9 @@ public class Quest implements IQuest {
                     targetLocation = nearest;
                 }
             } else if (stage.getMobsToKill() != null && stage.getMobsToKill().size() > 0) {
+                if (quester.getPlayer() == null) {
+                    return;
+                }
                 final Location source = quester.getPlayer().getLocation();
                 Location nearest = null;
                 double old_distance = 30000000;
@@ -496,6 +507,9 @@ public class Quest implements IQuest {
                     targetLocation = nearest;
                 }
             } else if (stage.getMobsToTame() != null && stage.getMobsToTame().size() > 0) {
+                if (quester.getPlayer() == null) {
+                    return;
+                }
                 final Location source = quester.getPlayer().getLocation();
                 Location nearest = null;
                 double old_distance = 30000000;
@@ -517,6 +531,9 @@ public class Quest implements IQuest {
                     targetLocation = nearest;
                 }
             } else if (stage.getSheepToShear() != null && stage.getSheepToShear().size() > 0) {
+                if (quester.getPlayer() == null) {
+                    return;
+                }
                 final Location source = quester.getPlayer().getLocation();
                 Location nearest = null;
                 double old_distance = 30000000;
@@ -543,6 +560,9 @@ public class Quest implements IQuest {
                 }
             }
             if (targetLocation != null && targetLocation.getWorld() != null) {
+                if (quester.getPlayer() == null) {
+                    return;
+                }
                 if (targetLocation.getWorld().getName().equals(quester.getPlayer().getWorld().getName())) {
                     final Location lockedTarget = new Location(targetLocation.getWorld(), targetLocation.getX(),
                             targetLocation.getY(), targetLocation.getZ());
@@ -894,8 +914,9 @@ public class Quest implements IQuest {
             Lang.send(p, ChatColor.GOLD + Lang.get(p, "questCompleteTitle").replace("<quest>",
                     ChatColor.YELLOW + name + ChatColor.GOLD));
             if (plugin.getSettings().canShowQuestTitles()) {
-                p.sendTitle(ChatColor.GOLD + Lang.get(p, "quest") + " " + Lang.get(p, "complete"),
-                        ChatColor.YELLOW + name);
+                final String title = ChatColor.GOLD + Lang.get(p, "quest") + " " + Lang.get(p, "complete");
+                final String subtitle = ChatColor.YELLOW + name;
+                TitleProvider.sendTitle(p, title, subtitle);
             }
             Lang.send(p, ChatColor.GREEN + Lang.get(p, "questRewardsTitle"));
             if (!issuedReward) {

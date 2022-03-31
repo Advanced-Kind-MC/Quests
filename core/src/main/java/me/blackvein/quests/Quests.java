@@ -37,7 +37,7 @@ import me.blackvein.quests.exceptions.QuestFormatException;
 import me.blackvein.quests.exceptions.StageFormatException;
 import me.blackvein.quests.interfaces.ReloadCallback;
 import me.blackvein.quests.listeners.BlockListener;
-import me.blackvein.quests.listeners.CmdExecutor;
+import me.blackvein.quests.listeners.CommandManager;
 import me.blackvein.quests.listeners.ConvoListener;
 import me.blackvein.quests.listeners.ItemListener;
 import me.blackvein.quests.listeners.NpcListener;
@@ -83,6 +83,7 @@ import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Biome;
 import org.bukkit.command.CommandExecutor;
+import org.bukkit.command.TabExecutor;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -135,6 +136,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class Quests extends JavaPlugin implements QuestsAPI {
 
@@ -150,7 +152,7 @@ public class Quests extends JavaPlugin implements QuestsAPI {
     private Collection<IAction> actions = new ConcurrentSkipListSet<>();
     private Collection<ICondition> conditions = new ConcurrentSkipListSet<>();
     private LinkedList<Integer> questNpcIds = new LinkedList<>();
-    private CommandExecutor cmdExecutor;
+    private TabExecutor cmdExecutor;
     private ConversationFactory conversationFactory;
     private ConversationFactory npcConversationFactory;
     private QuestFactory questFactory;
@@ -212,7 +214,7 @@ public class Quests extends JavaPlugin implements QuestsAPI {
         }
 
         // 4 - Load command executor
-        cmdExecutor = new CmdExecutor(this);
+        cmdExecutor = new CommandManager(this);
         
         // 5 - Load soft-depends
         depends.init();
@@ -230,13 +232,16 @@ public class Quests extends JavaPlugin implements QuestsAPI {
         
         // 8 - Setup commands
         if (getCommand("quests") != null) {
-            Objects.requireNonNull(getCommand("quests")).setExecutor(getCommandExecutor());
+            Objects.requireNonNull(getCommand("quests")).setExecutor(getTabExecutor());
+            Objects.requireNonNull(getCommand("quests")).setTabCompleter(getTabExecutor());
         }
         if (getCommand("questadmin") != null) {
-            Objects.requireNonNull(getCommand("questadmin")).setExecutor(getCommandExecutor());
+            Objects.requireNonNull(getCommand("questadmin")).setExecutor(getTabExecutor());
+            Objects.requireNonNull(getCommand("questadmin")).setTabCompleter(getTabExecutor());
         }
         if (getCommand("quest") != null) {
-            Objects.requireNonNull(getCommand("quest")).setExecutor(getCommandExecutor());
+            Objects.requireNonNull(getCommand("quest")).setExecutor(getTabExecutor());
+            Objects.requireNonNull(getCommand("quest")).setTabCompleter(getTabExecutor());
         }
         
         // 9 - Build conversation factories
@@ -272,7 +277,7 @@ public class Quests extends JavaPlugin implements QuestsAPI {
             }
         });
 
-        // 12 - Delay loading of Quests, Actions and modules
+        // 12 - Delay loading of quests, actions and modules
         delayLoadQuestInfo();
     }
 
@@ -292,6 +297,18 @@ public class Quests extends JavaPlugin implements QuestsAPI {
 
     public boolean isLoading() {
         return loading;
+    }
+
+    public File getPluginDataFolder() {
+        return getDataFolder();
+    }
+
+    public Logger getPluginLogger() {
+        return getLogger();
+    }
+
+    public InputStream getPluginResource(String filename) {
+        return getResource(filename);
     }
 
     public String getDetectedServerSoftwareVersion() {
@@ -530,6 +547,10 @@ public class Quests extends JavaPlugin implements QuestsAPI {
         return cmdExecutor;
     }
 
+    public TabExecutor getTabExecutor() {
+        return cmdExecutor;
+    }
+
     public ConversationFactory getConversationFactory() {
         return conversationFactory;
     }
@@ -718,7 +739,7 @@ public class Quests extends JavaPlugin implements QuestsAPI {
             }
         }
     }
-    
+
     /**
      * Transfer language files from jar to disk
      */
@@ -3943,16 +3964,18 @@ public class Quests extends JavaPlugin implements QuestsAPI {
     
     private void loadCustomSections(final IQuest quest, final FileConfiguration config, final String questKey)
             throws StageFormatException, QuestFormatException {
-        final ConfigurationSection questStages = config.getConfigurationSection("quests." + questKey + ".stages.ordered");
+        final ConfigurationSection questStages = config.getConfigurationSection("quests." + questKey
+                + ".stages.ordered");
         if (questStages != null) {
             for (final String stageNum : questStages.getKeys(false)) {
                 if (quest == null) {
-                    getLogger().warning("Unable to load custom objectives because quest for " + questKey + " was null");
+                    getLogger().warning("Unable to consider custom objectives because quest for " + questKey
+                            + " was null");
                     return;
                 }
                 if (quest.getStage(Integer.parseInt(stageNum) - 1) == null) {
-                    getLogger().severe("Unable to load custom objectives because stage" + (Integer.parseInt(stageNum) - 1)
-                            + " for " + quest.getName() + " was null");
+                    getLogger().severe("Unable to load custom objectives because stage" + (Integer.parseInt(stageNum)
+                            - 1) + " for " + quest.getName() + " was null");
                     return;
                 }
                 final IStage oStage = quest.getStage(Integer.parseInt(stageNum) - 1);
@@ -3961,8 +3984,8 @@ public class Quests extends JavaPlugin implements QuestsAPI {
                 oStage.clearCustomObjectiveData();
                 oStage.clearCustomObjectiveDisplays();
                 if (config.contains("quests." + questKey + ".stages.ordered." + stageNum + ".custom-objectives")) {
-                    final ConfigurationSection sec = config.getConfigurationSection("quests." + questKey + ".stages.ordered."
-                            + stageNum + ".custom-objectives");
+                    final ConfigurationSection sec = config.getConfigurationSection("quests." + questKey
+                            + ".stages.ordered." + stageNum + ".custom-objectives");
                     if (sec != null) {
                         for (final String path : sec.getKeys(false)) {
                             final String name = sec.getString(path + ".name");
@@ -4294,6 +4317,14 @@ public class Quests extends JavaPlugin implements QuestsAPI {
                 return q;
             }
         }
+        for (final IQuest iq : quests) {
+            // For tab completion
+            final Quest q = (Quest) iq;
+            if (ChatColor.stripColor(q.getName()).equals(ChatColor.stripColor(ChatColor
+                    .translateAlternateColorCodes('&', name)))) {
+                return q;
+            }
+        }
         return null;
     }
     
@@ -4319,6 +4350,13 @@ public class Quests extends JavaPlugin implements QuestsAPI {
         }
         for (final IQuest q : quests) {
             if (q.getName().toLowerCase().contains(ChatColor.translateAlternateColorCodes('&', name).toLowerCase())) {
+                return q;
+            }
+        }
+        for (final IQuest q : quests) {
+            // For tab completion
+            if (ChatColor.stripColor(q.getName()).equals(ChatColor.stripColor(ChatColor
+                    .translateAlternateColorCodes('&', name)))) {
                 return q;
             }
         }
@@ -4350,6 +4388,13 @@ public class Quests extends JavaPlugin implements QuestsAPI {
                 return a;
             }
         }
+        for (final IAction a : actions) {
+            // For tab completion
+            if (ChatColor.stripColor(a.getName()).equals(ChatColor.stripColor(ChatColor.
+                    translateAlternateColorCodes('&', name)))) {
+                return a;
+            }
+        }
         return null;
     }
     
@@ -4375,6 +4420,13 @@ public class Quests extends JavaPlugin implements QuestsAPI {
         }
         for (final ICondition c : conditions) {
             if (c.getName().toLowerCase().contains(ChatColor.translateAlternateColorCodes('&', name).toLowerCase())) {
+                return c;
+            }
+        }
+        for (final ICondition c : conditions) {
+            // For tab completion
+            if (ChatColor.stripColor(c.getName()).equals(ChatColor.stripColor(ChatColor
+                    .translateAlternateColorCodes('&', name)))) {
                 return c;
             }
         }

@@ -12,12 +12,12 @@
 
 package me.blackvein.quests.listeners;
 
-import me.blackvein.quests.quests.IQuest;
-import me.blackvein.quests.player.IQuester;
-import me.blackvein.quests.Quests;
-import me.blackvein.quests.quests.IStage;
-import me.blackvein.quests.enums.ObjectiveType;
 import me.blackvein.quests.Quester;
+import me.blackvein.quests.Quests;
+import me.blackvein.quests.enums.ObjectiveType;
+import me.blackvein.quests.player.IQuester;
+import me.blackvein.quests.quests.IQuest;
+import me.blackvein.quests.quests.IStage;
 import me.blackvein.quests.util.ItemUtil;
 import me.blackvein.quests.util.Lang;
 import me.blackvein.quests.util.MiscUtil;
@@ -870,8 +870,8 @@ public class PlayerListener implements Listener {
             if (plugin.getSettings().canGenFilesOnJoin() && !noobCheck.hasData()) {
                 noobCheck.saveData();
             }
-            
-            plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+
+            plugin.getServer().getScheduler().runTaskLaterAsynchronously(plugin, () -> {
                 final CompletableFuture<IQuester> cf = plugin.getStorage().loadQuester(player.getUniqueId());
                 try {
                     final IQuester quester = cf.get();
@@ -904,7 +904,7 @@ public class PlayerListener implements Listener {
                 } catch (final Exception e) {
                     e.printStackTrace();
                 }
-            });
+            }, 20L);
         }
     }
 
