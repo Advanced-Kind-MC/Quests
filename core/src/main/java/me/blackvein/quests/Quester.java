@@ -3064,8 +3064,8 @@ public class Quester implements IQuester {
             return;
         }
         final Player p = getPlayer();
-        if (!getCurrentStage(quest).objectiveOverrides.isEmpty()) {
-            for (final String s: getCurrentStage(quest).objectiveOverrides) {
+        if (!getCurrentStage(quest).getObjectiveOverrides().isEmpty()) {
+            for (final String s: getCurrentStage(quest).getObjectiveOverrides()) {
                 String message = ChatColor.GREEN + "(" + Lang.get(p, "completed") + ") " 
                         + ConfigUtil.parseString(ChatColor.translateAlternateColorCodes('&', s), quest, p);
                 if (plugin.getDependencies().getPlaceholderApi() != null) {
