@@ -12,7 +12,6 @@
 
 package me.blackvein.quests;
 
-import com.codisimus.plugins.phatloots.PhatLootsAPI;
 import com.gmail.nossr50.datatypes.skills.SkillType;
 import com.herocraftonline.heroes.characters.classes.HeroClass;
 import me.blackvein.quests.actions.Action;
@@ -37,13 +36,14 @@ import me.blackvein.quests.exceptions.QuestFormatException;
 import me.blackvein.quests.exceptions.StageFormatException;
 import me.blackvein.quests.interfaces.ReloadCallback;
 import me.blackvein.quests.listeners.BlockListener;
+import me.blackvein.quests.listeners.CitizensListener;
 import me.blackvein.quests.listeners.CommandManager;
 import me.blackvein.quests.listeners.ConvoListener;
 import me.blackvein.quests.listeners.ItemListener;
-import me.blackvein.quests.listeners.NpcListener;
 import me.blackvein.quests.listeners.PartiesListener;
 import me.blackvein.quests.listeners.PlayerListener;
 import me.blackvein.quests.listeners.UniteListener;
+import me.blackvein.quests.listeners.ZnpcsListener;
 import me.blackvein.quests.logging.QuestsLog4JFilter;
 import me.blackvein.quests.module.ICustomObjective;
 import me.blackvein.quests.player.IQuester;
@@ -130,9 +130,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentSkipListSet;
-import java.util.concurrent.ExecutionException;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.logging.Level;
@@ -151,7 +149,7 @@ public class Quests extends JavaPlugin implements QuestsAPI {
     private final Collection<IQuest> quests = new ConcurrentSkipListSet<>();
     private Collection<IAction> actions = new ConcurrentSkipListSet<>();
     private Collection<ICondition> conditions = new ConcurrentSkipListSet<>();
-    private LinkedList<Integer> questNpcIds = new LinkedList<>();
+    private Collection<UUID> questNpcUuids = new ConcurrentSkipListSet<>();
     private TabExecutor cmdExecutor;
     private ConversationFactory conversationFactory;
     private ConversationFactory npcConversationFactory;
@@ -161,7 +159,8 @@ public class Quests extends JavaPlugin implements QuestsAPI {
     private ConvoListener convoListener;
     private BlockListener blockListener;
     private ItemListener itemListener;
-    private NpcListener npcListener;
+    private CitizensListener citizensListener;
+    private ZnpcsListener znpcsListener;
     private PlayerListener playerListener;
     private NpcEffectThread effectThread;
     private PlayerMoveThread moveThread;
@@ -175,9 +174,16 @@ public class Quests extends JavaPlugin implements QuestsAPI {
     public void onEnable() {
         /*----> WARNING: ORDER OF STEPS MATTERS <----*/
 
+        // 1 - Trigger server to initialize Legacy Material Support
+        try {
+            Material.matchMaterial("STONE", true);
+        } catch (final NoSuchMethodError ignored) {
+            // Do nothing
+        }
+
         ((org.apache.logging.log4j.core.Logger) LogManager.getRootLogger()).addFilter(new QuestsLog4JFilter());
 
-        // 1 - Initialize variables
+        // 2 - Initialize variables
         bukkitVersion = Bukkit.getServer().getBukkitVersion().split("-")[0];
         settings = new Settings(this);
         try {
@@ -189,7 +195,8 @@ public class Quests extends JavaPlugin implements QuestsAPI {
         convoListener = new ConvoListener();
         blockListener = new BlockListener(this);
         itemListener = new ItemListener(this);
-        npcListener = new NpcListener(this);
+        citizensListener = new CitizensListener(this);
+        znpcsListener = new ZnpcsListener(this);
         playerListener = new PlayerListener(this);
         uniteListener = new UniteListener();
         partiesListener = new PartiesListener();
@@ -200,37 +207,40 @@ public class Quests extends JavaPlugin implements QuestsAPI {
         conditionFactory = new BukkitConditionFactory(this);
         depends = new Dependencies(this);
         trigger = new DenizenTrigger(this);
-        final Metrics metrics = new Metrics(this);
-        metrics.addCustomChart(new Metrics.SimplePie("language", Lang::getISO));
 
-        // 2 - Load main config
+        // 3 - Load main config
         settings.init();
+        if (settings.getLanguage().contains("-")) {
+            final Metrics metrics = new Metrics(this);
+            metrics.addCustomChart(new Metrics.SimplePie("language", () -> settings.getLanguage()));
+        }
         
-        // 3 - Setup language files
+        // 4 - Setup language files
         try {
             setupLang();
         } catch (final IOException | URISyntaxException e) {
             e.printStackTrace();
         }
 
-        // 4 - Load command executor
+        // 5 - Load command executor
         cmdExecutor = new CommandManager(this);
         
-        // 5 - Load soft-depends
+        // 6 - Load soft-depends
         depends.init();
         
-        // 6 - Save resources from jar
+        // 7 - Save resources from jar
         saveResourceAs("quests.yml", "quests.yml", false);
         saveResourceAs("actions.yml", "actions.yml", false);
         saveResourceAs("conditions.yml", "conditions.yml", false);
         
-        // 7 - Save config with any new options
+        // 8 - Save config with any new options
         getConfig().options().copyDefaults(true);
+        getConfig().options().header("See https://pikamug.gitbook.io/quests/setup/configuration");
         saveConfig();
         final StorageFactory storageFactory = new StorageFactory(this);
         storage = storageFactory.getInstance();
         
-        // 8 - Setup commands
+        // 9 - Setup commands
         if (getCommand("quests") != null) {
             Objects.requireNonNull(getCommand("quests")).setExecutor(getTabExecutor());
             Objects.requireNonNull(getCommand("quests")).setTabCompleter(getTabExecutor());
@@ -244,7 +254,7 @@ public class Quests extends JavaPlugin implements QuestsAPI {
             Objects.requireNonNull(getCommand("quest")).setTabCompleter(getTabExecutor());
         }
         
-        // 9 - Build conversation factories
+        // 10 - Build conversation factories
         this.conversationFactory = new ConversationFactory(this).withModality(false)
                 .withPrefix(context -> ChatColor.GRAY.toString())
                 .withFirstPrompt(new QuestAcceptPrompt()).withTimeout(settings.getAcceptTimeout())
@@ -254,10 +264,13 @@ public class Quests extends JavaPlugin implements QuestsAPI {
                 .withFirstPrompt(new NpcOfferQuestPrompt()).withTimeout(settings.getAcceptTimeout())
                 .withLocalEcho(false).addConversationAbandonedListener(convoListener);
 
-        // 10 - Register listeners
+        // 11 - Register listeners
         getServer().getPluginManager().registerEvents(getBlockListener(), this);
         getServer().getPluginManager().registerEvents(getItemListener(), this);
         depends.linkCitizens();
+        if (depends.getZnpcs() != null) {
+            getServer().getPluginManager().registerEvents(getZnpcsListener(), this);
+        }
         getServer().getPluginManager().registerEvents(getPlayerListener(), this);
         if (settings.getStrictPlayerMovement() > 0) {
             final long ticks = settings.getStrictPlayerMovement() * 20L;
@@ -269,7 +282,7 @@ public class Quests extends JavaPlugin implements QuestsAPI {
             getServer().getPluginManager().registerEvents(getPartiesListener(), this);
         }
 
-        // 11 - Attempt to check for updates
+        // 12 - Attempt to check for updates
         new UpdateChecker(this, 3711).getVersion(version -> {
             if (!getDescription().getVersion().split("-")[0].equalsIgnoreCase(version)) {
                 getLogger().info(ChatColor.DARK_GREEN + Lang.get("updateTo").replace("<version>",
@@ -277,7 +290,7 @@ public class Quests extends JavaPlugin implements QuestsAPI {
             }
         });
 
-        // 12 - Delay loading of quests, actions and modules
+        // 13 - Delay loading of quests, actions and modules
         delayLoadQuestInfo();
     }
 
@@ -285,8 +298,7 @@ public class Quests extends JavaPlugin implements QuestsAPI {
     public void onDisable() {
         getLogger().info("Saving Quester data...");
         for (final Player p : getServer().getOnlinePlayers()) {
-            final IQuester quester = getQuester(p.getUniqueId());
-            quester.saveData();
+            getQuester(p.getUniqueId()).saveData();
         }
         Bukkit.getScheduler().cancelTasks(this);
         getLogger().info("Closing storage...");
@@ -477,14 +489,11 @@ public class Quests extends JavaPlugin implements QuestsAPI {
      * Get Quester from player UUID
      *
      * @param id Player UUID
-     * @return Quester, or null if UUID is null
+     * @return new or existing Quester
      */
-    public Quester getQuester(final UUID id) {
-        if (id == null) {
-            return null;
-        }
+    public Quester getQuester(final @NotNull UUID id) {
         final ConcurrentSkipListSet<IQuester> set = (ConcurrentSkipListSet<IQuester>) questers;
-        for (final IQuester q: set) {
+        for (final IQuester q : set) {
             if (q != null && q.getUUID().equals(id)) {
                 return (Quester) q;
             }
@@ -535,14 +544,26 @@ public class Quests extends JavaPlugin implements QuestsAPI {
         this.questers = new ConcurrentSkipListSet<>(questers);
     }
 
-    public LinkedList<Integer> getQuestNpcIds() {
-        return questNpcIds;
+    /**
+     * Get every NPC UUID which sees use a quest giver, talk target, or kill target
+     *
+     * @return a collection of all UUIDs
+     */
+    public Collection<UUID> getQuestNpcUuids() {
+        return questNpcUuids;
     }
 
-    public void setQuestNpcIds(final LinkedList<Integer> questNpcIds) {
-        this.questNpcIds = questNpcIds;
+    /**
+     * Set every NPC UUID which sees use a quest giver, talk target, or kill target
+     *
+     * @param questNpcUuids a collection of UUIDs
+     */
+    @SuppressWarnings("unused")
+    public void setQuestNpcUuids(final Collection<UUID> questNpcUuids) {
+        this.questNpcUuids = new ConcurrentSkipListSet<>(questNpcUuids);
     }
 
+    @SuppressWarnings("unused")
     public CommandExecutor getCommandExecutor() {
         return cmdExecutor;
     }
@@ -583,8 +604,12 @@ public class Quests extends JavaPlugin implements QuestsAPI {
         return itemListener;
     }
 
-    public NpcListener getNpcListener() {
-        return npcListener;
+    public CitizensListener getCitizensListener() {
+        return citizensListener;
+    }
+
+    public ZnpcsListener getZnpcsListener() {
+        return znpcsListener;
     }
 
     public PlayerListener getPlayerListener() {
@@ -621,7 +646,7 @@ public class Quests extends JavaPlugin implements QuestsAPI {
 
     public class QuestAcceptPrompt extends MiscStringPrompt {
 
-        private ConversationContext cc;
+        private ConversationContext context;
 
         public QuestAcceptPrompt() {
             super(null);
@@ -631,16 +656,20 @@ public class Quests extends JavaPlugin implements QuestsAPI {
             super(context);
         }
 
-        private final int size = 2;
+        @Override
+        public ConversationContext getConversationContext() {
+            return context;
+        }
 
         public int getSize() {
-            return size;
+            return 2;
         }
 
         public String getTitle(final ConversationContext context) {
             return null;
         }
 
+        @SuppressWarnings("unused")
         public ChatColor getNumberColor(final ConversationContext context, final int number) {
             switch (number) {
                 case 1:
@@ -652,6 +681,7 @@ public class Quests extends JavaPlugin implements QuestsAPI {
             }
         }
 
+        @SuppressWarnings("unused")
         public String getSelectionText(final ConversationContext context, final int number) {
             switch (number) {
                 case 1:
@@ -669,7 +699,7 @@ public class Quests extends JavaPlugin implements QuestsAPI {
 
         @Override
         public @NotNull String getPromptText(final @NotNull ConversationContext context) {
-            this.cc = context;
+            this.context = context;
 
             final MiscPostQuestAcceptEvent event = new MiscPostQuestAcceptEvent(context, this);
             getServer().getPluginManager().callEvent(event);
@@ -682,11 +712,11 @@ public class Quests extends JavaPlugin implements QuestsAPI {
             final TextComponent component = new TextComponent("");
             component.addExtra(ChatColor.YELLOW + getQueryText(context) + "  " + ChatColor.GREEN);
             final TextComponent yes = new TextComponent(getSelectionText(context, 1));
-            yes.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, Lang.get("yesWord")));
+            yes.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/quests choice " + Lang.get("yesWord")));
             component.addExtra(yes);
             component.addExtra(ChatColor.RESET + " / ");
             final TextComponent no = new TextComponent(getSelectionText(context, 2));
-            no.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, Lang.get("noWord")));
+            no.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/quests choice " + Lang.get("noWord")));
             component.addExtra(no);
 
             ((Player)context.getForWhom()).spigot().sendMessage(component);
@@ -702,28 +732,15 @@ public class Quests extends JavaPlugin implements QuestsAPI {
             final Player player = (Player) context.getForWhom();
             if (input.equalsIgnoreCase("1") || input.equalsIgnoreCase("y")
                     || input.equalsIgnoreCase(Lang.get(player, "yesWord"))) {
-                IQuester quester = getQuester(player.getUniqueId());
-                if (quester == null) {
-                    // Must be new player
-                    quester = new Quester(Quests.this, player.getUniqueId());
-                    if (quester.saveData()) {
-                        getLogger().info("Created new data for player " + player.getName());
-                    } else {
-                        Lang.send(player, ChatColor.RED + Lang.get(player, "questSaveError"));
-                    }
-                }
+                final IQuester quester = getQuester(player.getUniqueId());
                 final String questIdToTake = quester.getQuestIdToTake();
-                try {
-                    if (getQuestByIdTemp(questIdToTake) == null) {
-                        getLogger().info(player.getName() + " attempted to take quest ID \"" + questIdToTake 
-                                + "\" but something went wrong");
-                        player.sendMessage(ChatColor.RED 
-                                + "Something went wrong! Please report issue to an administrator.");
-                    } else {
-                        getQuester(player.getUniqueId()).takeQuest(getQuestByIdTemp(questIdToTake), false);
-                    }
-                } catch (final Exception e) {
-                    e.printStackTrace();
+                if (getQuestByIdTemp(questIdToTake) == null) {
+                    getLogger().warning(player.getName() + " attempted to take quest ID \"" + questIdToTake
+                            + "\" but something went wrong");
+                    player.sendMessage(ChatColor.RED
+                            + "Something went wrong! Please report issue to an administrator.");
+                } else {
+                    quester.takeQuest(getQuestByIdTemp(questIdToTake), false);
                 }
                 return Prompt.END_OF_CONVERSATION;
             } else if (input.equalsIgnoreCase("2") || input.equalsIgnoreCase("n")
@@ -741,7 +758,7 @@ public class Quests extends JavaPlugin implements QuestsAPI {
     }
 
     /**
-     * Transfer language files from jar to disk
+     * Transfer language files from jar to disk, then initialize default
      */
     private void setupLang() throws IOException, URISyntaxException {
         final String path = "lang";
@@ -763,7 +780,7 @@ public class Quests extends JavaPlugin implements QuestsAPI {
             jar.close();
         }
         try {
-            Lang.init(this);
+            Lang.init(this, settings.getLanguage());
         } catch (final InvalidConfigurationException e) {
             e.printStackTrace();
         }
@@ -1055,10 +1072,11 @@ public class Quests extends JavaPlugin implements QuestsAPI {
     }
 
     /**
-     * Show all of a player's objectives for the current stage of a quest.<p>
+     * Show applicable objectives for the current stage of a player's quest.<p>
      * 
      * Respects PlaceholderAPI and translations, when enabled.
-     * 
+     *
+     * @deprecated Use {@link Quester#showCurrentObjectives(IQuest, IQuester, boolean)}
      * @param quest The quest to get current stage objectives of
      * @param quester The player to show current stage objectives to
      * @param ignoreOverrides Whether to ignore objective-overrides
@@ -1066,19 +1084,20 @@ public class Quests extends JavaPlugin implements QuestsAPI {
     @SuppressWarnings("deprecation")
     public void showObjectives(final IQuest quest, final IQuester quester, final boolean ignoreOverrides) {
         if (quest == null) {
-            getLogger().severe("Quest was null when getting objectives for " + quester.getLastKnownName());
+            getLogger().severe("Quest was null when showing objectives for " + quester.getLastKnownName());
             return;
         }
         if (quester.getQuestData(quest) == null) {
             getLogger().warning("Quest data was null when showing objectives for " + quest.getName());
             return;
         }
-        if (quester.getCurrentStage(quest) == null) {
+        final IStage stage = quester.getCurrentStage(quest);
+        if (stage == null) {
             getLogger().warning("Current stage was null when showing objectives for " + quest.getName());
             return;
         }
-        if (!ignoreOverrides && !quester.getCurrentStage(quest).getObjectiveOverrides().isEmpty()) {
-            for (final String s: quester.getCurrentStage(quest).getObjectiveOverrides()) {
+        if (!ignoreOverrides && !stage.getObjectiveOverrides().isEmpty()) {
+            for (final String s: stage.getObjectiveOverrides()) {
                 String message = ChatColor.GREEN + (s.trim().length() > 0 ? "- " : "") + ConfigUtil
                         .parseString(s, quest, quester.getPlayer());
                 if (depends.getPlaceholderApi() != null) {
@@ -1089,11 +1108,13 @@ public class Quests extends JavaPlugin implements QuestsAPI {
             return;
         }
         final QuestData data = quester.getQuestData(quest);
-        final IStage stage = quester.getCurrentStage(quest);
         for (final ItemStack e : stage.getBlocksToBreak()) {
             for (final ItemStack e2 : data.blocksBroken) {
                 if (e2.getType().equals(e.getType()) && e2.getDurability() == e.getDurability()) {
                     final ChatColor color = e2.getAmount() < e.getAmount() ? ChatColor.GREEN : ChatColor.GRAY;
+                    if (!settings.canShowCompletedObjs() && color.equals(ChatColor.GRAY)) {
+                        continue;
+                    }
                     String message = color + "- " + Lang.get(quester.getPlayer(), "break");
                     if (message.contains("<count>")) {
                         message = message.replace("<count>", "" + color + e2.getAmount() + "/" + e.getAmount());
@@ -1116,6 +1137,9 @@ public class Quests extends JavaPlugin implements QuestsAPI {
             for (final ItemStack e2 : data.blocksDamaged) {
                 if (e2.getType().equals(e.getType()) && e2.getDurability() == e.getDurability()) {
                     final ChatColor color = e2.getAmount() < e.getAmount() ? ChatColor.GREEN : ChatColor.GRAY;
+                    if (!settings.canShowCompletedObjs() && color.equals(ChatColor.GRAY)) {
+                        continue;
+                    }
                     String message = color + "- " + Lang.get(quester.getPlayer(), "damage");
                     if (message.contains("<count>")) {
                         message = message.replace("<count>", "" + color + e2.getAmount() + "/" + e.getAmount());
@@ -1138,6 +1162,9 @@ public class Quests extends JavaPlugin implements QuestsAPI {
             for (final ItemStack e2 : data.blocksPlaced) {
                 if (e2.getType().equals(e.getType()) && e2.getDurability() == e.getDurability()) {
                     final ChatColor color = e2.getAmount() < e.getAmount() ? ChatColor.GREEN : ChatColor.GRAY;
+                    if (!settings.canShowCompletedObjs() && color.equals(ChatColor.GRAY)) {
+                        continue;
+                    }
                     String message = color + "- " + Lang.get(quester.getPlayer(), "place");
                     if (message.contains("<count>")) {
                         message = message.replace("<count>", "" + color + e2.getAmount() + "/" + e.getAmount());
@@ -1160,6 +1187,9 @@ public class Quests extends JavaPlugin implements QuestsAPI {
             for (final ItemStack e2 : data.blocksUsed) {
                 if (e2.getType().equals(e.getType()) && e2.getDurability() == e.getDurability()) {
                     final ChatColor color = e2.getAmount() < e.getAmount() ? ChatColor.GREEN : ChatColor.GRAY;
+                    if (!settings.canShowCompletedObjs() && color.equals(ChatColor.GRAY)) {
+                        continue;
+                    }
                     String message = color + "- " + Lang.get(quester.getPlayer(), "use");
                     if (message.contains("<count>")) {
                         message = message.replace("<count>", "" + color + e2.getAmount() + "/" + e.getAmount());
@@ -1182,6 +1212,9 @@ public class Quests extends JavaPlugin implements QuestsAPI {
             for (final ItemStack e2 : data.blocksCut) {
                 if (e2.getType().equals(e.getType()) && e2.getDurability() == e.getDurability()) {
                     final ChatColor color = e2.getAmount() < e.getAmount() ? ChatColor.GREEN : ChatColor.GRAY;
+                    if (!settings.canShowCompletedObjs() && color.equals(ChatColor.GRAY)) {
+                        continue;
+                    }
                     String message = color + "- " + Lang.get(quester.getPlayer(), "cut");
                     if (message.contains("<count>")) {
                         message = message.replace("<count>", "" + color + e2.getAmount() + "/" + e.getAmount());
@@ -1208,6 +1241,10 @@ public class Quests extends JavaPlugin implements QuestsAPI {
             }
             final int amt = is.getAmount();
             final ChatColor color = crafted < amt ? ChatColor.GREEN : ChatColor.GRAY;
+            if (!settings.canShowCompletedObjs() && color.equals(ChatColor.GRAY)) {
+                craftIndex++;
+                continue;
+            }
             String message = color + "- " + Lang.get(quester.getPlayer(), "craftItem");
             if (message.contains("<count>")) {
                 message = message.replace("<count>", "" + color + crafted + "/" + is.getAmount());
@@ -1234,6 +1271,10 @@ public class Quests extends JavaPlugin implements QuestsAPI {
             }
             final int amt = is.getAmount();
             final ChatColor color = smelted < amt ? ChatColor.GREEN : ChatColor.GRAY;
+            if (!settings.canShowCompletedObjs() && color.equals(ChatColor.GRAY)) {
+                smeltIndex++;
+                continue;
+            }
             String message = color + "- " + Lang.get(quester.getPlayer(), "smeltItem");
             if (message.contains("<count>")) {
                 message = message.replace("<count>", "" + color + smelted + "/" + is.getAmount());
@@ -1260,6 +1301,10 @@ public class Quests extends JavaPlugin implements QuestsAPI {
             }
             final int amt = is.getAmount();
             final ChatColor color = enchanted < amt ? ChatColor.GREEN : ChatColor.GRAY;
+            if (!settings.canShowCompletedObjs() && color.equals(ChatColor.GRAY)) {
+                enchantIndex++;
+                continue;
+            }
             String message = color + "- " + Lang.get(quester.getPlayer(), "enchItem");
             if (message.contains("<count>")) {
                 message = message.replace("<count>", "" + color + enchanted + "/" + is.getAmount());
@@ -1303,6 +1348,10 @@ public class Quests extends JavaPlugin implements QuestsAPI {
             }
             final int amt = is.getAmount();
             final ChatColor color = brewed < amt ? ChatColor.GREEN : ChatColor.GRAY;
+            if (!settings.canShowCompletedObjs() && color.equals(ChatColor.GRAY)) {
+                brewIndex++;
+                continue;
+            }
             String message = color + "- " + Lang.get(quester.getPlayer(), "brewItem");
             if (message.contains("<count>")) {
                 message = message.replace("<count>", "" + color + brewed + "/" + is.getAmount());
@@ -1335,6 +1384,10 @@ public class Quests extends JavaPlugin implements QuestsAPI {
             }
             final int amt = is.getAmount();
             final ChatColor color = consumed < amt ? ChatColor.GREEN : ChatColor.GRAY;
+            if (!settings.canShowCompletedObjs() && color.equals(ChatColor.GRAY)) {
+                consumeIndex++;
+                continue;
+            }
             String message = color + "- " + Lang.get(quester.getPlayer(), "consumeItem");
             if (message.contains("<count>")) {
                 message = message.replace("<count>", "" + color + consumed + "/" + is.getAmount());
@@ -1366,9 +1419,14 @@ public class Quests extends JavaPlugin implements QuestsAPI {
                 delivered = data.itemsDelivered.get(deliverIndex).getAmount();
             }
             final int toDeliver = is.getAmount();
-            final Integer npc = stage.getItemDeliveryTargets().get(deliverIndex);
+            final UUID npc = stage.getItemDeliveryTargets().get(deliverIndex);
             final ChatColor color = delivered < toDeliver ? ChatColor.GREEN : ChatColor.GRAY;
-            String message = color + "- " + Lang.get(quester.getPlayer(), "deliver").replace("<npc>", depends.getNPCName(npc));
+            if (!settings.canShowCompletedObjs() && color.equals(ChatColor.GRAY)) {
+                deliverIndex++;
+                continue;
+            }
+            String message = color + "- " + Lang.get(quester.getPlayer(), "deliver")
+                    .replace("<npc>", depends.getNPCName(npc));
             if (message.contains("<count>")) {
                 message = message.replace("<count>", "" + color + delivered + "/" + toDeliver);
             } else {
@@ -1387,14 +1445,18 @@ public class Quests extends JavaPlugin implements QuestsAPI {
             deliverIndex++;
         }
         int interactIndex = 0;
-        for (final Integer n : stage.getCitizensToInteract()) {
+        for (final UUID uuid : stage.getNpcsToInteract()) {
             boolean interacted = false;
-            if (data.citizensInteracted.size() > interactIndex) {
-                interacted = data.citizensInteracted.get(interactIndex);
+            if (data.npcsInteracted.size() > interactIndex) {
+                interacted = data.npcsInteracted.get(interactIndex);
             }
             final ChatColor color = !interacted ? ChatColor.GREEN : ChatColor.GRAY;
+            if (!settings.canShowCompletedObjs() && color.equals(ChatColor.GRAY)) {
+                interactIndex++;
+                continue;
+            }
             String message = color + "- " + Lang.get(quester.getPlayer(), "talkTo")
-                    .replace("<npc>", depends.getNPCName(n));
+                    .replace("<npc>", depends.getNPCName(uuid));
             if (depends.getPlaceholderApi() != null) {
                 message = PlaceholderAPI.setPlaceholders(quester.getPlayer(), message);
             }
@@ -1402,18 +1464,22 @@ public class Quests extends JavaPlugin implements QuestsAPI {
             interactIndex++;
         }
         int npcKillIndex = 0;
-        for (final Integer n : stage.getCitizensToKill()) {
+        for (final UUID uuid : stage.getNpcsToKill()) {
             int npcKilled = 0;
-            if (data.citizensNumKilled.size() > npcKillIndex) {
-                npcKilled = data.citizensNumKilled.get(npcKillIndex);
+            if (data.npcsNumKilled.size() > npcKillIndex) {
+                npcKilled = data.npcsNumKilled.get(npcKillIndex);
             }
-            final int toNpcKill = stage.getCitizenNumToKill().get(npcKillIndex);
+            final int toNpcKill = stage.getNpcNumToKill().get(npcKillIndex);
             final ChatColor color = npcKilled < toNpcKill ? ChatColor.GREEN : ChatColor.GRAY;
+            if (!settings.canShowCompletedObjs() && color.equals(ChatColor.GRAY)) {
+                npcKillIndex++;
+                continue;
+            }
             String message = color + "- " + Lang.get(quester.getPlayer(), "kill");
             if (message.contains("<mob>")) {
-                message = message.replace("<mob>", depends.getNPCName(n));
+                message = message.replace("<mob>", depends.getNPCName(uuid));
             } else {
-                message += " " + depends.getNPCName(n);
+                message += " " + depends.getNPCName(uuid);
             }
             if (message.contains("<count>")) {
                 message = message.replace("<count>", "" + color + npcKilled + "/" + toNpcKill);
@@ -1435,6 +1501,10 @@ public class Quests extends JavaPlugin implements QuestsAPI {
             }
             final int toMobKill = stage.getMobNumToKill().get(mobKillIndex);
             final ChatColor color = mobKilled < toMobKill ? ChatColor.GREEN : ChatColor.GRAY;
+            if (!settings.canShowCompletedObjs() && color.equals(ChatColor.GRAY)) {
+                mobKillIndex++;
+                continue;
+            }
             String message = color + "- ";
             if (stage.getLocationsToKillWithin().isEmpty()) {
                 message += Lang.get(quester.getPlayer(), "kill");
@@ -1470,6 +1540,10 @@ public class Quests extends JavaPlugin implements QuestsAPI {
                 tamed = data.mobsTamed.get(tameIndex);
             }
             final ChatColor color = tamed < toTame ? ChatColor.GREEN : ChatColor.GRAY;
+            if (!settings.canShowCompletedObjs() && color.equals(ChatColor.GRAY)) {
+                tameIndex++;
+                continue;
+            }
             String message = color + "- " + Lang.get(quester.getPlayer(), "tame");
             if (!message.contains("<mob>")) {
                 message += " <mob>";
@@ -1490,31 +1564,37 @@ public class Quests extends JavaPlugin implements QuestsAPI {
         }
         if (stage.getFishToCatch() != null) {
             final ChatColor color = data.getFishCaught() < stage.getFishToCatch() ? ChatColor.GREEN : ChatColor.GRAY;
-            String message = color + "- " + Lang.get(quester.getPlayer(), "catchFish");
-            if (message.contains("<count>")) {
-                message = message.replace("<count>", "" + color + data.getFishCaught() + "/" + stage.getFishToCatch());
-            } else {
-                // Legacy
-                message += color + ": " + data.getFishCaught() + "/" + stage.getFishToCatch();
+            if (settings.canShowCompletedObjs()
+                    || (!settings.canShowCompletedObjs() && color.equals(ChatColor.GREEN))) {
+                String message = color + "- " + Lang.get(quester.getPlayer(), "catchFish");
+                if (message.contains("<count>")) {
+                    message = message.replace("<count>", "" + color + data.getFishCaught() + "/" + stage.getFishToCatch());
+                } else {
+                    // Legacy
+                    message += color + ": " + data.getFishCaught() + "/" + stage.getFishToCatch();
+                }
+                if (depends.getPlaceholderApi() != null) {
+                    message = PlaceholderAPI.setPlaceholders(quester.getPlayer(), message);
+                }
+                quester.sendMessage(message);
             }
-            if (depends.getPlaceholderApi() != null) {
-                message = PlaceholderAPI.setPlaceholders(quester.getPlayer(), message);
-            }
-            quester.sendMessage(message);
         }
         if (stage.getCowsToMilk() != null) {
             final ChatColor color = data.getCowsMilked() < stage.getCowsToMilk() ? ChatColor.GREEN : ChatColor.GRAY;
-            String message = color + "- " + Lang.get(quester.getPlayer(), "milkCow");
-            if (message.contains("<count>")) {
-                message = message.replace("<count>", "" + color + data.getCowsMilked() + "/" + stage.getCowsToMilk());
-            } else {
-                // Legacy
-                message += color + ": " + data.getCowsMilked() + "/" + stage.getCowsToMilk();
+            if (settings.canShowCompletedObjs()
+                    || (!settings.canShowCompletedObjs() && color.equals(ChatColor.GREEN))) {
+                String message = color + "- " + Lang.get(quester.getPlayer(), "milkCow");
+                if (message.contains("<count>")) {
+                    message = message.replace("<count>", "" + color + data.getCowsMilked() + "/" + stage.getCowsToMilk());
+                } else {
+                    // Legacy
+                    message += color + ": " + data.getCowsMilked() + "/" + stage.getCowsToMilk();
+                }
+                if (depends.getPlaceholderApi() != null) {
+                    message = PlaceholderAPI.setPlaceholders(quester.getPlayer(), message);
+                }
+                quester.sendMessage(message);
             }
-            if (depends.getPlaceholderApi() != null) {
-                message = PlaceholderAPI.setPlaceholders(quester.getPlayer(), message);
-            }
-            quester.sendMessage(message);
         }
         int shearIndex = 0;
         for (final int toShear : stage.getSheepNumToShear()) {
@@ -1523,6 +1603,10 @@ public class Quests extends JavaPlugin implements QuestsAPI {
                 sheared = data.sheepSheared.get(shearIndex);
             }
             final ChatColor color = sheared < toShear ? ChatColor.GREEN : ChatColor.GRAY;
+            if (!settings.canShowCompletedObjs() && color.equals(ChatColor.GRAY)) {
+                shearIndex++;
+                continue;
+            }
             String message = color + "- " + Lang.get(quester.getPlayer(), "shearSheep");
             message = message.replace("<color>", MiscUtil.getPrettyDyeColorName(stage.getSheepToShear()
                     .get(shearIndex)));
@@ -1538,23 +1622,29 @@ public class Quests extends JavaPlugin implements QuestsAPI {
         if (stage.getPlayersToKill() != null) {
             final ChatColor color = data.getPlayersKilled() < stage.getPlayersToKill() ? ChatColor.GREEN
                     : ChatColor.GRAY;
-            String message = color + "- " + Lang.get(quester.getPlayer(), "killPlayer");
-            if (message.contains("<count>")) {
-                message = message.replace("<count>", "" + color + data.getPlayersKilled() + "/"
-                        + stage.getPlayersToKill());
-            } else {
-                // Legacy
-                message += color + ": " + data.getPlayersKilled() + "/" + stage.getPlayersToKill();
+            if (settings.canShowCompletedObjs()
+                    || (!settings.canShowCompletedObjs() && color.equals(ChatColor.GREEN))) {
+                String message = color + "- " + Lang.get(quester.getPlayer(), "killPlayer");
+                if (message.contains("<count>")) {
+                    message = message.replace("<count>", "" + color + data.getPlayersKilled() + "/"
+                            + stage.getPlayersToKill());
+                } else {
+                    // Legacy
+                    message += color + ": " + data.getPlayersKilled() + "/" + stage.getPlayersToKill();
+                }
+                if (depends.getPlaceholderApi() != null) {
+                    message = PlaceholderAPI.setPlaceholders(quester.getPlayer(), message);
+                }
+                quester.sendMessage(message);
             }
-            if (depends.getPlaceholderApi() != null) {
-                message = PlaceholderAPI.setPlaceholders(quester.getPlayer(), message);
-            }
-            quester.sendMessage(message);
         }
         for (int i = 0 ; i < stage.getLocationsToReach().size(); i++) {
             if (i < data.locationsReached.size()) {
                 final ChatColor color = !data.locationsReached.get(i) ? ChatColor.GREEN : ChatColor.GRAY;
-                String message = color + Lang.get(quester.getPlayer(), "goTo");
+                if (!settings.canShowCompletedObjs() && color.equals(ChatColor.GRAY)) {
+                    continue;
+                }
+                String message = color + "- " + Lang.get(quester.getPlayer(), "goTo");
                 message = message.replace("<location>", stage.getLocationNames().get(i));
                 quester.sendMessage(message);
             }
@@ -1566,6 +1656,10 @@ public class Quests extends JavaPlugin implements QuestsAPI {
                 said = data.passwordsSaid.get(passIndex);
             }
             final ChatColor color = !said ? ChatColor.GREEN : ChatColor.GRAY;
+            if (!settings.canShowCompletedObjs() && color.equals(ChatColor.GRAY)) {
+                passIndex++;
+                continue;
+            }
             final String message = color + "- " + s;
             quester.sendMessage(message);
             passIndex++;
@@ -1578,6 +1672,10 @@ public class Quests extends JavaPlugin implements QuestsAPI {
             }
             final int toClear = stage.getCustomObjectiveCounts().get(customIndex);
             final ChatColor color = cleared < toClear ? ChatColor.GREEN : ChatColor.GRAY;
+            if (!settings.canShowCompletedObjs() && color.equals(ChatColor.GRAY)) {
+                customIndex++;
+                continue;
+            }
             String message = color + "- " + co.getDisplay();
             for (final Entry<String,Object> prompt : co.getData()) {
                 final String replacement = "%" + prompt.getKey() + "%";
@@ -1602,10 +1700,112 @@ public class Quests extends JavaPlugin implements QuestsAPI {
             customIndex++;
         }
     }
+
+    /**
+     * Show all of a player's conditions for the current stage of a quest.<p>
+     *
+     * @deprecated Use {@link Quester#showCurrentConditions(IQuest, IQuester)}
+     * @param quest The quest to get current stage objectives of
+     * @param quester The player to show current stage objectives to
+     */
+    public void showConditions(final IQuest quest, final IQuester quester) {
+        if (quest == null) {
+            getLogger().severe("Quest was null when getting conditions for " + quester.getLastKnownName());
+            return;
+        }
+        if (quester.getQuestData(quest) == null) {
+            getLogger().warning("Quest data was null when showing conditions for " + quest.getName());
+            return;
+        }
+        final IStage stage = quester.getCurrentStage(quest);
+        if (stage == null) {
+            getLogger().warning("Current stage was null when showing conditions for " + quest.getName());
+            return;
+        }
+        final ICondition c = stage.getCondition();
+        if (c != null && stage.getObjectiveOverrides().isEmpty()) {
+            quester.sendMessage(ChatColor.LIGHT_PURPLE + Lang.get("stageEditorConditions"));
+            if (!c.getEntitiesWhileRiding().isEmpty()) {
+                final StringBuilder msg = new StringBuilder("- " + Lang.get("conditionEditorRideEntity"));
+                for (final String e : c.getEntitiesWhileRiding()) {
+                    msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(e);
+                }
+                quester.sendMessage(ChatColor.YELLOW + msg.toString());
+            } else if (!c.getNpcsWhileRiding().isEmpty()) {
+                final StringBuilder msg = new StringBuilder("- " + Lang.get("conditionEditorRideNPC"));
+                for (final UUID u : c.getNpcsWhileRiding()) {
+                    if (getDependencies().getCitizens() != null) {
+                        msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(CitizensAPI.getNPCRegistry()
+                                .getByUniqueId(u).getName());
+                    } else {
+                        msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(u);
+                    }
+                }
+                quester.sendMessage(ChatColor.YELLOW + msg.toString());
+            } else if (!c.getPermissions().isEmpty()) {
+                final StringBuilder msg = new StringBuilder("- " + Lang.get("conditionEditorPermissions"));
+                for (final String e : c.getPermissions()) {
+                    msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(e);
+                }
+                quester.sendMessage(ChatColor.YELLOW + msg.toString());
+            } else if (!c.getItemsWhileHoldingMainHand().isEmpty()) {
+                final StringBuilder msg = new StringBuilder("- " + Lang.get("conditionEditorItemsInMainHand"));
+                for (final ItemStack is : c.getItemsWhileHoldingMainHand()) {
+                    msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(ItemUtil.getPrettyItemName(is
+                            .getType().name()));
+                }
+                quester.sendMessage(ChatColor.YELLOW + msg.toString());
+            } else if (!c.getItemsWhileWearing().isEmpty()) {
+                final StringBuilder msg = new StringBuilder("- " + Lang.get("conditionEditorItemsWear"));
+                for (final ItemStack is : c.getItemsWhileWearing()) {
+                    msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(ItemUtil.getPrettyItemName(is
+                            .getType().name()));
+                }
+                quester.sendMessage(ChatColor.YELLOW + msg.toString());
+            } else if (!c.getWorldsWhileStayingWithin().isEmpty()) {
+                final StringBuilder msg = new StringBuilder("- " + Lang.get("conditionEditorStayWithinWorld"));
+                for (final String w : c.getWorldsWhileStayingWithin()) {
+                    msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(w);
+                }
+                quester.sendMessage(ChatColor.YELLOW + msg.toString());
+            } else if (c.getTickStartWhileStayingWithin() > -1 && c.getTickEndWhileStayingWithin() > -1) {
+                final StringBuilder msg = new StringBuilder("- ").append(Lang.get("conditionEditorStayWithinTicks"));
+                msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(c.getTickStartWhileStayingWithin())
+                        .append(" - ").append(c.getTickEndWhileStayingWithin());
+                quester.sendMessage(ChatColor.YELLOW + msg.toString());
+            } else if (!c.getBiomesWhileStayingWithin().isEmpty()) {
+                final StringBuilder msg = new StringBuilder("- " + Lang.get("conditionEditorStayWithinBiome"));
+                for (final String b : c.getBiomesWhileStayingWithin()) {
+                    msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(MiscUtil
+                            .snakeCaseToUpperCamelCase(b));
+                }
+                quester.sendMessage(ChatColor.YELLOW + msg.toString());
+            } else if (!c.getRegionsWhileStayingWithin().isEmpty()) {
+                final StringBuilder msg = new StringBuilder("- " + Lang.get("conditionEditorStayWithinRegion"));
+                for (final String r : c.getRegionsWhileStayingWithin()) {
+                    msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(r);
+                }
+                quester.sendMessage(ChatColor.YELLOW + msg.toString());
+            } else if (!c.getPlaceholdersCheckIdentifier().isEmpty()) {
+                final StringBuilder msg = new StringBuilder("- " + Lang.get("conditionEditorCheckPlaceholder"));
+                int index = 0;
+                for (final String r : c.getPlaceholdersCheckIdentifier()) {
+                    if (c.getPlaceholdersCheckValue().size() > index) {
+                        msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(r).append(ChatColor.GRAY)
+                                .append(" = ").append(ChatColor.AQUA).append(c.getPlaceholdersCheckValue()
+                                        .get(index));
+                    }
+                    index++;
+                }
+                quester.sendMessage(ChatColor.YELLOW + msg.toString());
+            }
+        }
+    }
     
     /**
-     * Show the player a list of their quests
-     * 
+     * Show the player a list of their available quests
+     *
+     * @deprecated Use {@link Quester#listQuests(IQuester, int)}
      * @param quester Quester to show the list
      * @param page Page to display, with 7 quests per page
      */
@@ -1684,7 +1884,7 @@ public class Quests extends JavaPlugin implements QuestsAPI {
     }
 
     /**
-     * Reload quests, actions, config settings, lang and modules, and player data
+     * Reload quests, actions, conditions, config settings, lang, modules, and player data
      */
     public void reload(final ReloadCallback<Boolean> callback) {
         if (loading) {
@@ -1693,36 +1893,27 @@ public class Quests extends JavaPlugin implements QuestsAPI {
         }
         loading = true;
         reloadConfig();
-        final CompletableFuture<Void> saveFuture = getStorage().saveOfflineQuesters();
         Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
             try {
+                getStorage().saveOfflineQuesters().get();
                 Lang.clear();
                 settings.init();
-                Lang.init(Quests.this);
+                Lang.init(Quests.this, settings.getLanguage());
                 quests.clear();
                 actions.clear();
                 conditions.clear();
                 loadQuests();
                 loadActions();
                 loadConditions();
-                final CompletableFuture<Void> loadFuture = saveFuture.thenRunAsync(() -> {
-                    try {
-                        for (final IQuester quester : questers) {
-                            final CompletableFuture<IQuester> cf = getStorage().loadQuester(quester.getUUID());
-                            final IQuester loaded = cf.get();
-                            for (final IQuest q : loaded.getCurrentQuestsTemp().keySet()) {
-                                loaded.checkQuest(q);
-                            }
-                        }
-                    } catch (InterruptedException | ExecutionException e) {
-                        finishLoading(callback, false, e);
+                for (final IQuester quester : questers) {
+                    final IQuester loaded = getStorage().loadQuester(quester.getUUID()).get();
+                    for (final IQuest quest : loaded.getCurrentQuestsTemp().keySet()) {
+                        loaded.checkQuest(quest);
                     }
-                });
-                loadFuture.thenRunAsync(() -> {
-                    loadModules();
-                    importQuests();
-                    finishLoading(callback, true, null);
-                });
+                }
+                loadModules();
+                importQuests();
+                finishLoading(callback, true, null);
             } catch (final Exception e) {
                 finishLoading(callback, false, e);
             }
@@ -1830,13 +2021,20 @@ public class Quests extends JavaPlugin implements QuestsAPI {
         } else {
             throw new QuestFormatException("finish-message is missing", questKey);
         }
-        if (depends.getCitizens() != null && config.contains("quests." + questKey + ".npc-giver-id")) {
-            final int npcId = config.getInt("quests." + questKey + ".npc-giver-id");
-            if (CitizensAPI.getNPCRegistry().getById(npcId) != null) {
-                quest.setNpcStart(CitizensAPI.getNPCRegistry().getById(npcId));
-                questNpcIds.add(npcId);
+        if (config.contains("quests." + questKey + ".npc-giver-uuid")) {
+            final UUID uuid = UUID.fromString(Objects.requireNonNull(config.getString("quests." + questKey
+                    + ".npc-giver-uuid")));
+            quest.setNpcStart(uuid);
+            questNpcUuids.add(uuid);
+        } else if (depends.getCitizens() != null && config.contains("quests." + questKey + ".npc-giver-id")) {
+            // Legacy
+            final int id = config.getInt("quests." + questKey + ".npc-giver-id");
+            if (CitizensAPI.getNPCRegistry().getById(id) != null) {
+                final NPC npc = CitizensAPI.getNPCRegistry().getById(id);
+                quest.setNpcStart(npc.getUniqueId());
+                questNpcUuids.add(npc.getUniqueId());
             } else {
-                throw new QuestFormatException("npc-giver-id has invalid NPC ID " + npcId, questKey);
+                throw new QuestFormatException("npc-giver-id has invalid NPC ID " + id, questKey);
             }
         }
         if (config.contains("quests." + questKey + ".block-start")) {
@@ -1957,6 +2155,13 @@ public class Quests extends JavaPlugin implements QuestsAPI {
                 throw new QuestFormatException("Reward money is not a number", questKey);
             }
         }
+        if (config.contains("quests." + questKey + ".rewards.quest-points")) {
+            if (config.getInt("quests." + questKey + ".rewards.quest-points", -999) != -999) {
+                rewards.setQuestPoints(config.getInt("quests." + questKey + ".rewards.quest-points"));
+            } else {
+                throw new QuestFormatException("Reward quest-points is not a number", questKey);
+            }
+        }
         if (config.contains("quests." + questKey + ".rewards.exp")) {
             if (config.getInt("quests." + questKey + ".rewards.exp", -999) != -999) {
                 rewards.setExp(config.getInt("quests." + questKey + ".rewards.exp"));
@@ -1994,13 +2199,6 @@ public class Quests extends JavaPlugin implements QuestsAPI {
                 rewards.setPermissionWorlds(config.getStringList("quests." + questKey + ".rewards.permission-worlds"));
             } else {
                 throw new QuestFormatException("Reward permissions is not a list of worlds", questKey);
-            }
-        }
-        if (config.contains("quests." + questKey + ".rewards.quest-points")) {
-            if (config.getInt("quests." + questKey + ".rewards.quest-points", -999) != -999) {
-                rewards.setQuestPoints(config.getInt("quests." + questKey + ".rewards.quest-points"));
-            } else {
-                throw new QuestFormatException("Reward quest-points is not a number", questKey);
             }
         }
         if (depends.isPluginAvailable("mcMMO")) {
@@ -2076,22 +2274,8 @@ public class Quests extends JavaPlugin implements QuestsAPI {
                 }
             }
         }
-        if (depends.isPluginAvailable("PhatLoots")) {
-            if (config.contains("quests." + questKey + ".rewards.phat-loots")) {
-                if (ConfigUtil.checkList(config.getList("quests." + questKey + ".rewards.phat-loots"), String.class)) {
-                    for (final String loot : config.getStringList("quests." + questKey + ".rewards.phat-loots")) {
-                        if (depends.getPhatLoots() == null) {
-                            throw new QuestFormatException("PhatLoots not found for phat-loots", questKey);
-                        } else if (PhatLootsAPI.getPhatLoot(loot) == null) {
-                            throw new QuestFormatException("Reward phat-loots has invalid PhatLoot name " + loot,
-                                    questKey);
-                        }
-                    }
-                    rewards.setPhatLoots(config.getStringList("quests." + questKey + ".rewards.phat-loots"));
-                } else {
-                    throw new QuestFormatException("Reward phat-loots is not a list of PhatLoots", questKey);
-                }
-            }
+        if (config.contains("quests." + questKey + ".rewards.phat-loots")) {
+            throw new QuestFormatException("PhatLoots support has been removed. Use the module instead!", questKey);
         }
         if (config.contains("quests." + questKey + ".rewards.details-override")) {
             if (ConfigUtil.checkList(config.getList("quests." + questKey 
@@ -2175,26 +2359,29 @@ public class Quests extends JavaPlugin implements QuestsAPI {
                 throw new QuestFormatException("Requirement quest-points is not a number", questKey);
             }
         }
+        if (config.contains("quests." + questKey + ".requirements.exp")) {
+            if (config.getInt("quests." + questKey + ".requirements.exp", -999) != -999) {
+                requires.setExp(config.getInt("quests." + questKey + ".requirements.exp"));
+            } else {
+                throw new QuestFormatException("Requirement exp is not a number", questKey);
+            }
+        }
         if (config.contains("quests." + questKey + ".requirements.quest-blocks")) {
             if (ConfigUtil.checkList(config.getList("quests." + questKey + ".requirements.quest-blocks"), 
                     String.class)) {
                 final List<String> nodes = config.getStringList("quests." + questKey + ".requirements.quest-blocks");
                 boolean failed = false;
                 String failedQuest = "NULL";
-                final List<IQuest> temp = new LinkedList<>();
+                final List<String> temp = new LinkedList<>();
                 for (final String node : nodes) {
                     boolean done = false;
                     for (final String id : questsSection.getKeys(false)) {
-                        final String node2 = config.getString("quests." + id + ".name");
-                        if (node2 != null && (id.equals(node) || node2.equalsIgnoreCase(node)
-                                || ChatColor.stripColor(node2).equalsIgnoreCase(ChatColor.stripColor(node)))) {
-                            if (getQuestTemp(node) != null) {
-                                temp.add(getQuestTemp(node));
-                            } else if (getQuestByIdTemp(node) != null) {
-                                temp.add(getQuestByIdTemp(node));
+                        if (id.equals(node)) {
+                            if (getQuestByIdTemp(node) != null) {
+                                temp.add(node);
                             } else {
-                                throw new QuestFormatException("Requirement quest-blocks has unknown quest name/id "
-                                        + node + ", place it earlier in file so it loads first", questKey);
+                                throw new QuestFormatException("Requirement quest-blocks has unknown quest ID "
+                                        + node + ", manually update it to a valid ID", questKey);
                             }
                             done = true;
                             break;
@@ -2206,9 +2393,9 @@ public class Quests extends JavaPlugin implements QuestsAPI {
                         break;
                     }
                 }
-                requires.setBlockQuests(temp);
+                requires.setBlockQuestIds(temp);
                 if (failed) {
-                    throw new QuestFormatException("Requirement quest-blocks has invalid quest name/id " + failedQuest,
+                    throw new QuestFormatException("Requirement quest-blocks has invalid quest ID " + failedQuest,
                             questKey);
                 }
             } else {
@@ -2220,20 +2407,16 @@ public class Quests extends JavaPlugin implements QuestsAPI {
                 final List<String> nodes = config.getStringList("quests." + questKey + ".requirements.quests");
                 boolean failed = false;
                 String failedQuest = "NULL";
-                final List<IQuest> temp = new LinkedList<>();
+                final List<String> temp = new LinkedList<>();
                 for (final String node : nodes) {
                     boolean done = false;
                     for (final String id : questsSection.getKeys(false)) {
-                        final String node2 = config.getString("quests." + id + ".name");
-                        if (node2 != null && (id.equals(node) || node2.equalsIgnoreCase(node)
-                                || ChatColor.stripColor(node2).equalsIgnoreCase(ChatColor.stripColor(node)))) {
-                            if (getQuestTemp(node) != null) {
-                                temp.add(getQuestTemp(node));
-                            } else if (getQuestByIdTemp(node) != null) {
-                                temp.add(getQuestByIdTemp(node));
+                        if (id.equals(node)) {
+                            if (getQuestByIdTemp(node) != null) {
+                                temp.add(node);
                             } else {
-                                throw new QuestFormatException("Requirement quests has unknown quest name " 
-                                        + node + ", place it earlier in file so it loads first", questKey);
+                                throw new QuestFormatException("Requirement quests has unknown quest ID "
+                                        + node + ", manually update it to a valid ID", questKey);
                             }
                             done = true;
                             break;
@@ -2245,9 +2428,9 @@ public class Quests extends JavaPlugin implements QuestsAPI {
                         break;
                     }
                 }
-                requires.setNeededQuests(temp);
+                requires.setNeededQuestIds(temp);
                 if (failed) {
-                    throw new QuestFormatException("Requirement quests has invalid quest name/id "
+                    throw new QuestFormatException("Requirement quests has invalid quest ID "
                             + failedQuest, questKey);
                 }
             } else {
@@ -2366,7 +2549,7 @@ public class Quests extends JavaPlugin implements QuestsAPI {
             opts.setIgnoreSilkTouch(config.getBoolean("quests." + questKey + ".options.ignore-silk-touch"));
         }
         if (config.contains("quests." + questKey + ".options.external-party-plugin")) {
-            opts.setExternalPartyPlugin(config.getString("quests." + questKey + ".external-party-plugin"));
+            opts.setExternalPartyPlugin(config.getString("quests." + questKey + ".options.external-party-plugin"));
         }
         if (config.contains("quests." + questKey + ".options.use-parties-plugin")) {
             opts.setUsePartiesPlugin(config.getBoolean("quests." + questKey + ".options.use-parties-plugin"));
@@ -2382,6 +2565,9 @@ public class Quests extends JavaPlugin implements QuestsAPI {
         }
         if (config.contains("quests." + questKey + ".options.handle-offline-players")) {
             opts.setHandleOfflinePlayers(config.getBoolean("quests." + questKey + ".options.handle-offline-players"));
+        }
+        if (config.contains("quests." + questKey + ".options.ignore-block-replace")) {
+            opts.setIgnoreBlockReplace(config.getBoolean("quests." + questKey + ".options.ignore-block-replace"));
         }
     }
 
@@ -2428,10 +2614,13 @@ public class Quests extends JavaPlugin implements QuestsAPI {
             final List<ItemStack> itemsToEnchant;
             final List<ItemStack> itemsToBrew;
             final List<ItemStack> itemsToConsume;
+            final List<String> npcUuidsToTalkTo;
             final List<Integer> npcIdsToTalkTo;
             final List<ItemStack> itemsToDeliver;
+            final List<String> itemDeliveryTargetUuids;
             final List<Integer> itemDeliveryTargetIds;
             final List<String> deliveryMessages;
+            final List<String> npcUuidsToKill;
             final List<Integer> npcIdsToKill;
             final List<Integer> npcAmountsToKill;
             // Legacy Denizen script load
@@ -2889,15 +3078,32 @@ public class Quests extends JavaPlugin implements QuestsAPI {
                     throw new StageFormatException("players-to-kill is not a number", quest, stageNum);
                 }
             }
-            if (config.contains("quests." + questKey + ".stages.ordered." + stageNum + ".npc-ids-to-talk-to")) {
+            if (config.contains("quests." + questKey + ".stages.ordered." + stageNum + ".npc-uuids-to-talk-to")) {
+                if (ConfigUtil.checkList(config.getList("quests." + questKey + ".stages.ordered." + stageNum
+                        + ".npc-uuids-to-talk-to"), String.class)) {
+                    npcUuidsToTalkTo = config.getStringList("quests." + questKey + ".stages.ordered." + stageNum
+                            + ".npc-uuids-to-talk-to");
+                    for (final String s : npcUuidsToTalkTo) {
+                        final UUID uuid = UUID.fromString(s);
+                        oStage.addNpcToInteract(uuid);
+                        questNpcUuids.add(uuid);
+                    }
+                } else {
+                    throw new StageFormatException("npc-uuids-to-talk-to is not a list of numbers", quest, stageNum);
+                }
+            } else if (config.contains("quests." + questKey + ".stages.ordered." + stageNum + ".npc-ids-to-talk-to")) {
+                // Legacy
                 if (ConfigUtil.checkList(config.getList("quests." + questKey + ".stages.ordered." + stageNum 
                         + ".npc-ids-to-talk-to"), Integer.class)) {
                     npcIdsToTalkTo = config.getIntegerList("quests." + questKey + ".stages.ordered." + stageNum 
                             + ".npc-ids-to-talk-to");
                     for (final int i : npcIdsToTalkTo) {
                         if (getDependencies().getCitizens() != null) {
-                            if (CitizensAPI.getNPCRegistry().getById(i) != null) {
-                                questNpcIds.add(i);
+                            final NPC npc = CitizensAPI.getNPCRegistry().getById(i);
+                            if (npc != null) {
+                                final UUID npcUuid = npc.getUniqueId();
+                                oStage.addNpcToInteract(npcUuid);
+                                questNpcUuids.add(npcUuid);
                             } else {
                                 throw new StageFormatException("npc-ids-to-talk-to has invalid NPC ID of " + i, quest, 
                                         stageNum);
@@ -2907,37 +3113,71 @@ public class Quests extends JavaPlugin implements QuestsAPI {
                                     stageNum);
                         }
                     }
-                    oStage.setCitizensToInteract(new LinkedList<>(npcIdsToTalkTo));
                 } else {
                     throw new StageFormatException("npc-ids-to-talk-to is not a list of numbers", quest, stageNum);
                 }
             }
             if (config.contains("quests." + questKey + ".stages.ordered." + stageNum + ".items-to-deliver")) {
-                if (config.contains("quests." + questKey + ".stages.ordered." + stageNum + ".npc-delivery-ids")) {
-                    if (ConfigUtil.checkList(config.getList("quests." + questKey + ".stages.ordered." + stageNum 
-                            + ".npc-delivery-ids"), Integer.class)) {
-                        if (config.contains("quests." + questKey + ".stages.ordered." + stageNum 
+                if (config.contains("quests." + questKey + ".stages.ordered." + stageNum + ".npc-delivery-uuids")) {
+                    if (ConfigUtil.checkList(config.getList("quests." + questKey + ".stages.ordered." + stageNum
+                            + ".npc-delivery-uuids"), String.class)) {
+                        if (config.contains("quests." + questKey + ".stages.ordered." + stageNum
                                 + ".delivery-messages")) {
-                            itemsToDeliver = (List<ItemStack>) config.get("quests." + questKey + ".stages.ordered." 
+                            itemsToDeliver = (List<ItemStack>) config.get("quests." + questKey + ".stages.ordered."
                                     + stageNum + ".items-to-deliver");
-                            itemDeliveryTargetIds = config.getIntegerList("quests." + questKey + ".stages.ordered." 
+                            itemDeliveryTargetUuids = config.getStringList("quests." + questKey + ".stages.ordered."
+                                    + stageNum + ".npc-delivery-uuids");
+                            deliveryMessages = config.getStringList("quests." + questKey + ".stages.ordered."
+                                    + stageNum + ".delivery-messages");
+                            int index = 0;
+                            if (ConfigUtil.checkList(itemsToDeliver, ItemStack.class)) {
+                                for (final ItemStack stack : itemsToDeliver) {
+                                    if (stack != null) {
+                                        final UUID npcUuid = UUID.fromString(itemDeliveryTargetUuids.get(index));
+                                        final String msg = deliveryMessages.size() > index
+                                                ? deliveryMessages.get(index)
+                                                : deliveryMessages.get(deliveryMessages.size() - 1);
+                                        index++;
+                                        oStage.addItemToDeliver(stack);
+                                        oStage.addItemDeliveryTarget(npcUuid);
+                                        oStage.addDeliverMessage(msg);
+                                    }
+                                }
+                            } else {
+                                throw new StageFormatException("items-to-deliver has invalid formatting", quest,
+                                        stageNum);
+                            }
+                        }
+                    } else {
+                        throw new StageFormatException("npc-delivery-uuids is not a list of numbers", quest, stageNum);
+                    }
+                } else if (config.contains("quests." + questKey + ".stages.ordered." + stageNum
+                        + ".npc-delivery-ids")) {
+                    // Legacy
+                    if (ConfigUtil.checkList(config.getList("quests." + questKey + ".stages.ordered." + stageNum
+                            + ".npc-delivery-ids"), Integer.class)) {
+                        if (config.contains("quests." + questKey + ".stages.ordered." + stageNum
+                                + ".delivery-messages")) {
+                            itemsToDeliver = (List<ItemStack>) config.get("quests." + questKey + ".stages.ordered."
+                                    + stageNum + ".items-to-deliver");
+                            itemDeliveryTargetIds = config.getIntegerList("quests." + questKey + ".stages.ordered."
                                     + stageNum + ".npc-delivery-ids");
-                            deliveryMessages = config.getStringList("quests." + questKey + ".stages.ordered." 
+                            deliveryMessages = config.getStringList("quests." + questKey + ".stages.ordered."
                                     + stageNum + ".delivery-messages");
                             int index = 0;
                             if (ConfigUtil.checkList(itemsToDeliver, ItemStack.class)) {
                                 for (final ItemStack stack : itemsToDeliver) {
                                     if (stack != null) {
                                         final int npcId = itemDeliveryTargetIds.get(index);
-                                        final String msg = deliveryMessages.size() > index 
-                                                ? deliveryMessages.get(index) 
+                                        final String msg = deliveryMessages.size() > index
+                                                ? deliveryMessages.get(index)
                                                 : deliveryMessages.get(deliveryMessages.size() - 1);
                                         index++;
                                         if (getDependencies().getCitizens() != null) {
                                             final NPC npc = CitizensAPI.getNPCRegistry().getById(npcId);
                                             if (npc != null) {
                                                 oStage.addItemToDeliver(stack);
-                                                oStage.addItemDeliveryTarget(npcId);
+                                                oStage.addItemDeliveryTarget(npc.getUniqueId());
                                                 oStage.addDeliverMessage(msg);
                                             } else {
                                                 throw new StageFormatException("npc-delivery-ids has invalid NPC " +
@@ -2950,84 +3190,36 @@ public class Quests extends JavaPlugin implements QuestsAPI {
                                     }
                                 }
                             } else {
-                                final List<String> items = config.getStringList("quests." + questKey 
-                                        + ".stages.ordered." + stageNum + ".items-to-deliver");
-                                if (ConfigUtil.checkList(items, String.class)) {
-                                    // Legacy
-                                    for (final String item : items) {
-                                        final ItemStack is = ItemUtil.readItemStack("" + item);
-                                        if (index <= itemDeliveryTargetIds.size()) {
-                                            if (itemDeliveryTargetIds.size() != deliveryMessages.size()) {
-                                                throw new StageFormatException(
-                                                        "delivery-messages must be same size as items-to-deliver",
-                                                        quest, stageNum);
-                                            }
-                                            final int npcId = itemDeliveryTargetIds.get(index);
-                                            final String msg = deliveryMessages.get(index);
-                                            index++;
-                                            if (is != null) {
-                                                if (getDependencies().getCitizens() != null) {
-                                                    final NPC npc = CitizensAPI.getNPCRegistry().getById(npcId);
-                                                    if (npc != null) {
-                                                        oStage.addItemToDeliver(is);
-                                                        oStage.addItemDeliveryTarget(npcId);
-                                                        oStage.addDeliverMessage(msg);
-                                                    } else {
-                                                        throw new StageFormatException(
-                                                                "npc-delivery-ids has invalid NPC ID of " + npcId, 
-                                                                quest, stageNum);
-                                                    }
-                                                } else {
-                                                    throw new StageFormatException(
-                                                            "Citizens was not found installed for npc-delivery-ids", 
-                                                            quest, stageNum);
-                                                }
-                                            } else {
-                                                throw new StageFormatException(
-                                                        "items-to-deliver has invalid formatting " + item, quest, 
-                                                        stageNum);
-                                            }
-                                        } else {
-                                            throw new StageFormatException("items-to-deliver is missing target IDs"
-                                                    , quest, stageNum);
-                                        }
-                                    }
-                                } else {
-                                    throw new StageFormatException("items-to-deliver has invalid formatting", quest, 
-                                            stageNum);
-                                }
+                                throw new StageFormatException("items-to-deliver has invalid formatting", quest,
+                                        stageNum);
                             }
                         }
                     } else {
                         throw new StageFormatException("npc-delivery-ids is not a list of numbers", quest, stageNum);
                     }
                 } else {
-                    throw new StageFormatException("npc-delivery-id is missing", quest, stageNum);
+                    throw new StageFormatException("npc-delivery-uuid is missing", quest, stageNum);
                 }
             }
-            if (config.contains("quests." + questKey + ".stages.ordered." + stageNum + ".npc-ids-to-kill")) {
-                if (ConfigUtil.checkList(config.getList("quests." + questKey + ".stages.ordered." + stageNum 
-                        + ".npc-ids-to-kill"), Integer.class)) {
+            if (config.contains("quests." + questKey + ".stages.ordered." + stageNum + ".npc-uuids-to-kill")) {
+                if (ConfigUtil.checkList(config.getList("quests." + questKey + ".stages.ordered." + stageNum
+                        + ".npc-uuids-to-kill"), String.class)) {
                     if (config.contains("quests." + questKey + ".stages.ordered." + stageNum + ".npc-kill-amounts")) {
-                        if (ConfigUtil.checkList(config.getList("quests." + questKey + ".stages.ordered." + stageNum 
+                        if (ConfigUtil.checkList(config.getList("quests." + questKey + ".stages.ordered." + stageNum
                                 + ".npc-kill-amounts"), Integer.class)) {
-                            npcIdsToKill = config.getIntegerList("quests." + questKey + ".stages.ordered." + stageNum 
-                                    + ".npc-ids-to-kill");
+                            npcUuidsToKill = config.getStringList("quests." + questKey + ".stages.ordered." + stageNum
+                                    + ".npc-uuids-to-kill");
                             npcAmountsToKill = config.getIntegerList("quests." + questKey + ".stages.ordered." 
                                     + stageNum + ".npc-kill-amounts");
-                            for (final int i : npcIdsToKill) {
-                                if (CitizensAPI.getNPCRegistry().getById(i) != null) {
-                                    if (npcAmountsToKill.get(npcIdsToKill.indexOf(i)) > 0) {
-                                        oStage.addCitizenToKill(i);
-                                        oStage.addCitizenNumToKill(npcAmountsToKill.get(npcIdsToKill.indexOf(i)));
-                                        questNpcIds.add(i);
-                                    } else {
-                                        throw new StageFormatException("npc-kill-amounts is not a positive number", 
-                                                quest, stageNum);
-                                    }
+                            for (final String s : npcUuidsToKill) {
+                                final UUID npcUuid = UUID.fromString(s);
+                                if (npcAmountsToKill.get(npcUuidsToKill.indexOf(s)) > 0) {
+                                    oStage.addNpcToKill(npcUuid);
+                                    oStage.addNpcNumToKill(npcAmountsToKill.get(npcUuidsToKill.indexOf(s)));
+                                    questNpcUuids.add(npcUuid);
                                 } else {
-                                    throw new StageFormatException("npc-ids-to-kill has invalid NPC ID of " + i, quest,
-                                            stageNum);
+                                    throw new StageFormatException("npc-kill-amounts is not a positive number",
+                                            quest, stageNum);
                                 }
                             }
                         } else {
@@ -3037,8 +3229,47 @@ public class Quests extends JavaPlugin implements QuestsAPI {
                     } else {
                         throw new StageFormatException("npc-kill-amounts is missing", quest, stageNum);
                     }
-                } else {
-                    throw new StageFormatException("npc-ids-to-kill is not a list of numbers", quest, stageNum);
+                }
+            } else if (config.contains("quests." + questKey + ".stages.ordered." + stageNum + ".npc-ids-to-kill")) {
+                if (ConfigUtil.checkList(config.getList("quests." + questKey + ".stages.ordered." + stageNum
+                        + ".npc-ids-to-kill"), Integer.class)) {
+                    // Legacy
+                    if (config.contains("quests." + questKey + ".stages.ordered." + stageNum + ".npc-kill-amounts")) {
+                        if (ConfigUtil.checkList(config.getList("quests." + questKey + ".stages.ordered." + stageNum
+                                + ".npc-kill-amounts"), Integer.class)) {
+                            npcIdsToKill = config.getIntegerList("quests." + questKey + ".stages.ordered." + stageNum
+                                    + ".npc-ids-to-kill");
+                            npcAmountsToKill = config.getIntegerList("quests." + questKey + ".stages.ordered."
+                                    + stageNum + ".npc-kill-amounts");
+                            for (final int i : npcIdsToKill) {
+                                if (getDependencies().getCitizens() != null) {
+                                    final NPC npc = CitizensAPI.getNPCRegistry().getById(i);
+                                    if (npc != null) {
+                                        if (npcAmountsToKill.get(npcIdsToKill.indexOf(i)) > 0) {
+                                            final UUID npcUuid = npc.getUniqueId();
+                                            oStage.addNpcToKill(npcUuid);
+                                            oStage.addNpcNumToKill(npcAmountsToKill.get(npcIdsToKill.indexOf(i)));
+                                            questNpcUuids.add(npcUuid);
+                                        } else {
+                                            throw new StageFormatException("npc-kill-amounts is not a positive number",
+                                                    quest, stageNum);
+                                        }
+                                    } else {
+                                        throw new StageFormatException("npc-ids-to-kill has invalid NPC ID of " + i, quest,
+                                                stageNum);
+                                    }
+                                } else {
+                                    throw new StageFormatException(
+                                            "Citizens not found for npc-ids-to-kill", quest, stageNum);
+                                }
+                            }
+                        } else {
+                            throw new StageFormatException("npc-kill-amounts is not a list of numbers", quest,
+                                    stageNum);
+                        }
+                    } else {
+                        throw new StageFormatException("npc-kill-amounts is missing", quest, stageNum);
+                    }
                 }
             }
             if (config.contains("quests." + questKey + ".stages.ordered." + stageNum + ".mobs-to-kill")) {
@@ -3182,18 +3413,18 @@ public class Quests extends JavaPlugin implements QuestsAPI {
                             final List<Integer> mobAmounts = config.getIntegerList("quests." + questKey + ".stages.ordered." 
                                     + stageNum + ".mob-tame-amounts");
                             for (final String mob : mobs) {
-                                if (mob != null) {
-                                    final Class<? extends Entity> ec = EntityType.valueOf(mob.toUpperCase())
-                                            .getEntityClass();
+                                final EntityType type = MiscUtil.getProperMobType(mob);
+                                if (type != null) {
+                                    final Class<? extends Entity> ec = type.getEntityClass();
                                     if (ec != null && Tameable.class.isAssignableFrom(ec)) {
-                                        oStage.addMobToTame(EntityType.valueOf(mob.toUpperCase()));
+                                        oStage.addMobToTame(type);
                                         oStage.addMobNumToTame(mobAmounts.get(mobs.indexOf(mob)));
                                     } else {
                                         throw new StageFormatException("mobs-to-tame has invalid tameable mob " + mob,
                                                 quest, stageNum);
                                     }
                                 } else {
-                                    throw new StageFormatException("mobs-to-tame has invalid mob", quest, stageNum);
+                                    throw new StageFormatException("mobs-to-tame has invalid mob name " + mob, quest, stageNum);
                                 }
                             }
                         } else {
@@ -3846,17 +4077,33 @@ public class Quests extends JavaPlugin implements QuestsAPI {
                 throw new ConditionFormatException("ride-entity is not a list of entity types", conditionKey);
             }
         }
-        if (data.contains(conditionKey + "ride-npc")) {
-            if (ConfigUtil.checkList(data.getList(conditionKey + "ride-npc"), Integer.class)) {
-                final LinkedList<Integer> npcList = new LinkedList<>();
-                for (final int i : data.getIntegerList(conditionKey + "ride-npc")) {
-                    if (i < 0) {
-                        throw new ConditionFormatException("ride-npc is not a valid NPC ID",
-                                conditionKey);
-                    }
-                    npcList.add(i);
+        if (data.contains(conditionKey + "ride-npc-uuid")) {
+            if (ConfigUtil.checkList(data.getList(conditionKey + "ride-npc-uuid"), String.class)) {
+                final LinkedList<UUID> npcList = new LinkedList<>();
+                for (final String s : data.getStringList(conditionKey + "ride-npc-uuid")) {
+                    final UUID u = UUID.fromString(s);
+                    npcList.add(u);
                 }
                 condition.setNpcsWhileRiding(npcList);
+            }
+        } else if (data.contains(conditionKey + "ride-npc")) {
+            // Legacy
+            if (ConfigUtil.checkList(data.getList(conditionKey + "ride-npc"), Integer.class)) {
+                final LinkedList<UUID> npcList = new LinkedList<>();
+                if (getDependencies().getCitizens() != null) {
+                    for (final int i : data.getIntegerList(conditionKey + "ride-npc")) {
+                        final NPC npc = CitizensAPI.getNPCRegistry().getById(i);
+                        if (npc != null) {
+                            npcList.add(npc.getUniqueId());
+                        } else {
+                            throw new ConditionFormatException("ride-npc is not a valid NPC ID",
+                                    conditionKey);
+                        }
+                    }
+                    condition.setNpcsWhileRiding(npcList);
+                } else {
+                    throw new ConditionFormatException("Citizens not found for ride-npc", conditionKey);
+                }
             } else {
                 throw new ConditionFormatException("ride-npc is not a list of NPC IDs", conditionKey);
             }
@@ -3883,6 +4130,19 @@ public class Quests extends JavaPlugin implements QuestsAPI {
             }
             condition.setItemsWhileHoldingMainHand(temp);
         }
+        if (data.contains(conditionKey + "wear")) {
+            final LinkedList<ItemStack> temp = new LinkedList<>();
+            @SuppressWarnings("unchecked")
+            final List<ItemStack> stackList = (List<ItemStack>) data.get(conditionKey + "wear");
+            if (ConfigUtil.checkList(stackList, ItemStack.class)) {
+                for (final ItemStack stack : stackList) {
+                    if (stack != null) {
+                        temp.add(stack);
+                    }
+                }
+            }
+            condition.setItemsWhileWearing(temp);
+        }
         if (data.contains(conditionKey + "stay-within-world")) {
             if (ConfigUtil.checkList(data.getList(conditionKey + "stay-within-world"), String.class)) {
                 final LinkedList<String> worlds = new LinkedList<>();
@@ -3897,6 +4157,18 @@ public class Quests extends JavaPlugin implements QuestsAPI {
                 condition.setWorldsWhileStayingWithin(worlds);
             } else {
                 throw new ConditionFormatException("stay-within-world is not a list of worlds", conditionKey);
+            }
+        }
+        if (data.contains(conditionKey + "stay-within-ticks")) {
+            if (data.isInt(conditionKey + "stay-within-ticks.start")) {
+                condition.setTickStartWhileStayingWithin(data.getInt(conditionKey + "stay-within-ticks.start"));
+            } else {
+                throw new ConditionFormatException("start tick is not a number", conditionKey);
+            }
+            if (data.isInt(conditionKey + "stay-within-ticks.end")) {
+                condition.setTickEndWhileStayingWithin(data.getInt(conditionKey + "stay-within-ticks.end"));
+            } else {
+                throw new ConditionFormatException("end tick is not a number", conditionKey);
             }
         }
         if (data.contains(conditionKey + "stay-within-biome")) {
@@ -4432,69 +4704,109 @@ public class Quests extends JavaPlugin implements QuestsAPI {
         }
         return null;
     }
+
+    /**
+     * Checks whether an NPC has a quest that the player may accept
+     *
+     * @param npc the giver NPC UUID to check
+     * @param quester The player to check
+     * @return true if at least one available quest has not yet been completed
+     */
+    public boolean hasQuest(final UUID npc, final IQuester quester) {
+        for (final IQuest q : quests) {
+            if (q.getNpcStart() != null && !quester.getCompletedQuestsTemp().contains(q)) {
+                if (q.getNpcStart().equals(npc)) {
+                    final boolean ignoreLockedQuests = settings.canIgnoreLockedQuests();
+                    if (!ignoreLockedQuests || q.testRequirements(quester)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    // Unused internally, left for external use
+    /**
+     * Checks whether an NPC has a quest that the player has already completed
+     *
+     * @param npc The giver NPC UUID to check
+     * @param quester The player to check
+     * @return true if at least one available quest has been completed
+     */
+    public boolean hasCompletedQuest(final UUID npc, final IQuester quester) {
+        for (final IQuest q : quests) {
+            if (q.getNpcStart() != null && quester.getCompletedQuestsTemp().contains(q)) {
+                if (q.getNpcStart().equals(npc)) {
+                    final boolean ignoreLockedQuests = settings.canIgnoreLockedQuests();
+                    if (!ignoreLockedQuests || q.testRequirements(quester)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Checks whether an NPC has a repeatable quest that the player has already completed
+     *
+     * @param npc The giver NPC UUID to check
+     * @param quester The player to check
+     * @return true if at least one available, redoable quest has been completed
+     */
+    public boolean hasCompletedRedoableQuest(final UUID npc, final IQuester quester) {
+        for (final IQuest q : quests) {
+            if (q.getNpcStart() != null && quester.getCompletedQuestsTemp().contains(q)
+                    && q.getPlanner().getCooldown() > -1) {
+                if (q.getNpcStart().equals(npc)) {
+                    final boolean ignoreLockedQuests = settings.canIgnoreLockedQuests();
+                    if (!ignoreLockedQuests || q.testRequirements(quester)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
     
     /**
-     * Checks whether a NPC has a quest that the player may accept
+     * Checks whether an NPC has a quest that the player may accept
      * 
      * @param npc The giver NPC to check
      * @param quester The player to check
      * @return true if at least one available quest has not yet been completed
+     * @deprecated Use {@link #hasQuest(UUID, IQuester)}
      */
+    @Deprecated
     public boolean hasQuest(final NPC npc, final IQuester quester) {
-        for (final IQuest q : quests) {
-            if (q.getNpcStart() != null && !quester.getCompletedQuestsTemp().contains(q)) {
-                if (q.getNpcStart().getId() == npc.getId()) {
-                    final boolean ignoreLockedQuests = settings.canIgnoreLockedQuests();
-                    if (!ignoreLockedQuests || q.testRequirements(quester)) {
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
+        return hasQuest(npc.getUniqueId(), quester);
     }
     
     // Unused internally, left for external use
     /**
-     * Checks whether a NPC has a quest that the player has already completed
+     * Checks whether an NPC has a quest that the player has already completed
      * 
      * @param npc The giver NPC to check
      * @param quester The player to check
      * @return true if at least one available quest has been completed
+     * @deprecated Use {@link #hasCompletedQuest(UUID, IQuester)}
      */
+    @Deprecated
     public boolean hasCompletedQuest(final NPC npc, final IQuester quester) {
-        for (final IQuest q : quests) {
-            if (q.getNpcStart() != null && quester.getCompletedQuestsTemp().contains(q)) {
-                if (q.getNpcStart().getId() == npc.getId()) {
-                    final boolean ignoreLockedQuests = settings.canIgnoreLockedQuests();
-                    if (!ignoreLockedQuests || q.testRequirements(quester)) {
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
+        return hasCompletedQuest(npc.getUniqueId(), quester);
     }
     
     /**
-     * Checks whether a NPC has a repeatable quest that the player has already completed
+     * Checks whether an NPC has a repeatable quest that the player has already completed
      * 
      * @param npc The giver NPC to check
      * @param quester The player to check
      * @return true if at least one available, redoable quest has been completed
+     * @deprecated Use {@link #hasCompletedRedoableQuest(UUID, IQuester)}
      */
+    @Deprecated
     public boolean hasCompletedRedoableQuest(final NPC npc, final IQuester quester) {
-        for (final IQuest q : quests) {
-            if (q.getNpcStart() != null && quester.getCompletedQuestsTemp().contains(q)
-                    && q.getPlanner().getCooldown() > -1) {
-                if (q.getNpcStart().getId() == npc.getId()) {
-                    final boolean ignoreLockedQuests = settings.canIgnoreLockedQuests();
-                    if (!ignoreLockedQuests || q.testRequirements(quester)) {
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
+        return hasCompletedRedoableQuest(npc.getUniqueId(), quester);
     }
 }

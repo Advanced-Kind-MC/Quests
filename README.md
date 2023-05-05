@@ -17,8 +17,9 @@ Download
 
 Distributed through these fine vendors:
 - CurseForge (https://www.curseforge.com/minecraft/bukkit-plugins/quests/)
+- Modrinth (https://modrinth.com/plugin/quests.classic)
 - SpigotMC (https://www.spigotmc.org/resources/quests.3711/)
-- MC-Market (https://www.mc-market.org/resources/19187/)
+- BuiltByBit (https://builtbybit.com/resources/quests.19187/)
 
 Usage
 ---
@@ -28,7 +29,7 @@ Read about usage in the documentation: https://pikamug.gitbook.io/quests/
 Compile
 ---
 
-Requires Java 8 and Maven: https://pikamug.gitbook.io/quests/master/plugin-compilation
+Java 8 and Maven required: https://pikamug.gitbook.io/quests/master/plugin-compilation
 
 Translate
 ---

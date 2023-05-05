@@ -248,7 +248,7 @@ public class SqlStorage implements StorageImplementation {
     }
 
     @Override
-    public void saveQuester(final IQuester quester) throws Exception {
+    public void saveQuester(final IQuester quester) throws SQLException {
         final UUID uniqueId = quester.getUUID();
         final String lastKnownName = quester.getLastKnownName();
         final String oldLastKnownName = getQuesterLastKnownName(uniqueId);
@@ -371,8 +371,8 @@ public class SqlStorage implements StorageImplementation {
                         ps.setString(11, serializeItemStackProgress(entry.getValue().getItemsBrewed()));
                         ps.setString(12, serializeItemStackProgress(entry.getValue().getItemsConsumed()));
                         ps.setString(13, serializeItemStackProgress(entry.getValue().getItemsDelivered()));
-                        ps.setString(14, serializeProgress(entry.getValue().getCitizensInteracted()));
-                        ps.setString(15, serializeProgress(entry.getValue().getCitizensNumKilled()));
+                        ps.setString(14, serializeProgress(entry.getValue().getNpcsInteracted()));
+                        ps.setString(15, serializeProgress(entry.getValue().getNpcsNumKilled()));
                         ps.setString(16, serializeProgress(entry.getValue().getMobNumKilled()));
                         ps.setString(17, serializeProgress(entry.getValue().getMobsTamed()));
                         ps.setInt(18, entry.getValue().getFishCaught());
@@ -418,7 +418,7 @@ public class SqlStorage implements StorageImplementation {
     }
 
     @Override
-    public String getQuesterLastKnownName(final UUID uniqueId) throws Exception {
+    public String getQuesterLastKnownName(final UUID uniqueId) throws SQLException {
         try (final Connection c = connectionFactory.getConnection()) {
             try (final PreparedStatement ps = c.prepareStatement(statementProcessor.apply(PLAYER_SELECT_USERNAME))) {
                 ps.setString(1, uniqueId.toString());
@@ -432,7 +432,7 @@ public class SqlStorage implements StorageImplementation {
         return null;
     }
     
-    public ConcurrentHashMap<IQuest, Integer> getQuesterCurrentQuests(final UUID uniqueId) throws Exception {
+    public ConcurrentHashMap<IQuest, Integer> getQuesterCurrentQuests(final UUID uniqueId) throws SQLException {
         final ConcurrentHashMap<IQuest, Integer> currentQuests = new ConcurrentHashMap<>();
         try (final Connection c = connectionFactory.getConnection()) {
             try (final PreparedStatement ps = c.prepareStatement(statementProcessor.apply(PLAYER_CURRENT_QUESTS_SELECT_BY_UUID))) {
@@ -450,7 +450,7 @@ public class SqlStorage implements StorageImplementation {
         return currentQuests;
     }
 
-    public ConcurrentHashMap<IQuest, QuestData> getQuesterQuestData(final UUID uniqueId) throws Exception {
+    public ConcurrentHashMap<IQuest, QuestData> getQuesterQuestData(final UUID uniqueId) throws SQLException {
         final IQuester quester = plugin.getQuester(uniqueId);
         final ConcurrentHashMap<IQuest, QuestData> questData = new ConcurrentHashMap<>();
         try (final Connection c = connectionFactory.getConnection()) {
@@ -483,8 +483,8 @@ public class SqlStorage implements StorageImplementation {
                                     quester.getCurrentStage(quest).getItemsToConsume()));
                             data.itemsDelivered.addAll(deserializeItemStackProgress(rs.getString("items_delivered"),
                                     quester.getCurrentStage(quest).getItemsToDeliver()));
-                            data.citizensInteracted.addAll(deserializeBooleanProgress(rs.getString("npcs_interacted")));
-                            data.citizensNumKilled.addAll(deserializeIntProgress(rs.getString("npcs_killed")));
+                            data.npcsInteracted.addAll(deserializeBooleanProgress(rs.getString("npcs_interacted")));
+                            data.npcsNumKilled.addAll(deserializeIntProgress(rs.getString("npcs_killed")));
                             data.mobNumKilled.addAll(deserializeIntProgress(rs.getString("mobs_killed")));
                             data.mobsTamed.addAll(deserializeIntProgress(rs.getString("mobs_tamed")));
                             data.setFishCaught(rs.getInt("fish_caught"));
@@ -505,7 +505,7 @@ public class SqlStorage implements StorageImplementation {
         return questData;
     }
     
-    public ConcurrentSkipListSet<IQuest> getQuesterCompletedQuests(final UUID uniqueId) throws Exception {
+    public ConcurrentSkipListSet<IQuest> getQuesterCompletedQuests(final UUID uniqueId) throws SQLException {
         final ConcurrentSkipListSet<IQuest> completedQuests = new ConcurrentSkipListSet<>();
         try (final Connection c = connectionFactory.getConnection()) {
             try (final PreparedStatement ps = c.prepareStatement(statementProcessor.apply(PLAYER_COMPLETED_QUESTS_SELECT_BY_UUID))) {
@@ -523,7 +523,7 @@ public class SqlStorage implements StorageImplementation {
         return completedQuests;
     }
     
-    public ConcurrentHashMap<IQuest, Long> getQuesterCompletedTimes(final UUID uniqueId) throws Exception {
+    public ConcurrentHashMap<IQuest, Long> getQuesterCompletedTimes(final UUID uniqueId) throws SQLException {
         final ConcurrentHashMap<IQuest, Long> completedTimes = new ConcurrentHashMap<>();
         try (final Connection c = connectionFactory.getConnection()) {
             try (final PreparedStatement ps = c.prepareStatement(statementProcessor.apply(PLAYER_REDOABLE_QUESTS_SELECT_BY_UUID))) {
@@ -541,7 +541,7 @@ public class SqlStorage implements StorageImplementation {
         return completedTimes;
     }
     
-    public ConcurrentHashMap<IQuest, Integer> getQuesterAmountsCompleted(final UUID uniqueId) throws Exception {
+    public ConcurrentHashMap<IQuest, Integer> getQuesterAmountsCompleted(final UUID uniqueId) throws SQLException {
         final ConcurrentHashMap<IQuest, Integer> amountsCompleted = new ConcurrentHashMap<>();
         try (final Connection c = connectionFactory.getConnection()) {
             try (final PreparedStatement ps = c.prepareStatement(statementProcessor.apply(PLAYER_REDOABLE_QUESTS_SELECT_BY_UUID))) {
@@ -560,7 +560,7 @@ public class SqlStorage implements StorageImplementation {
     }
 
     @Override
-    public Collection<UUID> getSavedUniqueIds() throws Exception {
+    public Collection<UUID> getSavedUniqueIds() throws SQLException {
         final Collection<UUID> ids = new ConcurrentSkipListSet<>();
         try (final Connection c = connectionFactory.getConnection()) {
             try (final PreparedStatement ps = c.prepareStatement(statementProcessor.apply(PLAYER_SELECT_UUID))) {

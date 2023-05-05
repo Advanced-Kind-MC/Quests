@@ -13,15 +13,15 @@
 package me.blackvein.quests.convo.conditions.tasks;
 
 import me.blackvein.quests.Quests;
+import me.blackvein.quests.convo.conditions.ConditionsEditorNumericPrompt;
+import me.blackvein.quests.convo.conditions.ConditionsEditorStringPrompt;
 import me.blackvein.quests.convo.conditions.main.ConditionMainPrompt;
-import me.blackvein.quests.convo.quests.QuestsEditorNumericPrompt;
-import me.blackvein.quests.convo.quests.QuestsEditorStringPrompt;
-import me.blackvein.quests.events.editor.quests.QuestsEditorPostOpenNumericPromptEvent;
-import me.blackvein.quests.events.editor.quests.QuestsEditorPostOpenStringPromptEvent;
+import me.blackvein.quests.convo.quests.objectives.QuestNpcsPrompt;
+import me.blackvein.quests.events.editor.conditions.ConditionsEditorPostOpenNumericPromptEvent;
+import me.blackvein.quests.events.editor.conditions.ConditionsEditorPostOpenStringPromptEvent;
 import me.blackvein.quests.util.CK;
 import me.blackvein.quests.util.Lang;
 import me.blackvein.quests.util.MiscUtil;
-import net.citizensnpcs.api.CitizensAPI;
 import org.bukkit.ChatColor;
 import org.bukkit.conversations.ConversationContext;
 import org.bukkit.conversations.Prompt;
@@ -37,11 +37,11 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-public class EntityPrompt extends QuestsEditorNumericPrompt {
+public class ConditionEntityPrompt extends ConditionsEditorNumericPrompt {
     
     private final Quests plugin;
     
-    public EntityPrompt(final ConversationContext context) {
+    public ConditionEntityPrompt(final ConversationContext context) {
         super(context);
         this.plugin = (Quests)context.getPlugin();
     }
@@ -104,16 +104,16 @@ public class EntityPrompt extends QuestsEditorNumericPrompt {
                 return text.toString();
             }
         case 2:
-            if (plugin.getDependencies().getCitizens() != null) {
+            if (plugin.getDependencies().getCitizens() != null || plugin.getDependencies().getZnpcs() != null) {
                 if (context.getSessionData(CK.C_WHILE_RIDING_NPC) == null) {
                     return ChatColor.GRAY + "(" + Lang.get("noneSet") + ")";
                 } else {
                     final StringBuilder text = new StringBuilder();
-                    final List<Integer> whileRidingNpc = (List<Integer>) context.getSessionData(CK.C_WHILE_RIDING_NPC);
+                    final List<UUID> whileRidingNpc = (List<UUID>) context.getSessionData(CK.C_WHILE_RIDING_NPC);
                     if (whileRidingNpc != null) {
-                        for (final int i : whileRidingNpc) {
+                        for (final UUID u : whileRidingNpc) {
                             text.append("\n").append(ChatColor.GRAY).append("     - ").append(ChatColor.BLUE)
-                                    .append(CitizensAPI.getNPCRegistry().getById(i).getName());
+                                    .append(plugin.getDependencies().getNPCName(u));
                         }
                     }
                     return text.toString();
@@ -130,11 +130,9 @@ public class EntityPrompt extends QuestsEditorNumericPrompt {
 
     @Override
     public @NotNull String getBasicPromptText(final @NotNull ConversationContext context) {
-        if (context.getPlugin() != null) {
-            final QuestsEditorPostOpenNumericPromptEvent event
-                    = new QuestsEditorPostOpenNumericPromptEvent(context, this);
-            context.getPlugin().getServer().getPluginManager().callEvent(event);
-        }
+        final ConditionsEditorPostOpenNumericPromptEvent event
+                = new ConditionsEditorPostOpenNumericPromptEvent(context, this);
+        plugin.getServer().getPluginManager().callEvent(event);
         
         final StringBuilder text = new StringBuilder(ChatColor.AQUA + "- " + getTitle(context) + " -");
         for (int i = 1; i <= size; i++) {
@@ -149,7 +147,7 @@ public class EntityPrompt extends QuestsEditorNumericPrompt {
     protected Prompt acceptValidatedInput(final @NotNull ConversationContext context, final Number input) {
         switch(input.intValue()) {
         case 1:
-            return new EntitiesPrompt(context);
+            return new ConditionEntitiesPrompt(context);
         case 2:
             return new ConditionNpcsPrompt(context);
         case 3:
@@ -160,13 +158,13 @@ public class EntityPrompt extends QuestsEditorNumericPrompt {
                 return Prompt.END_OF_CONVERSATION;
             }
         default:
-            return new EntityPrompt(context);
+            return new ConditionEntityPrompt(context);
         }
     }
     
-    public class EntitiesPrompt extends QuestsEditorStringPrompt {
+    public class ConditionEntitiesPrompt extends ConditionsEditorStringPrompt {
         
-        public EntitiesPrompt(final ConversationContext context) {
+        public ConditionEntitiesPrompt(final ConversationContext context) {
             super(context);
         }
 
@@ -182,11 +180,9 @@ public class EntityPrompt extends QuestsEditorNumericPrompt {
         
         @Override
         public @NotNull String getPromptText(final @NotNull ConversationContext context) {
-            if (context.getPlugin() != null) {
-                final QuestsEditorPostOpenStringPromptEvent event
-                        = new QuestsEditorPostOpenStringPromptEvent(context, this);
-                context.getPlugin().getServer().getPluginManager().callEvent(event);
-            }
+            final ConditionsEditorPostOpenStringPromptEvent event
+                    = new ConditionsEditorPostOpenStringPromptEvent(context, this);
+            plugin.getServer().getPluginManager().callEvent(event);
 
             final StringBuilder mobs = new StringBuilder(ChatColor.LIGHT_PURPLE + getTitle(context) + "\n");
             final List<EntityType> mobArr = new LinkedList<>(Arrays.asList(EntityType.values()));
@@ -223,22 +219,22 @@ public class EntityPrompt extends QuestsEditorNumericPrompt {
                             mobTypes.add(s);
                             context.setSessionData(CK.C_WHILE_RIDING_ENTITY, mobTypes);
                         } else {
-                            context.getForWhom().sendRawMessage(ChatColor.LIGHT_PURPLE + s + " " + ChatColor.RED 
-                                    + Lang.get("stageEditorInvalidMob"));
-                            return new EntitiesPrompt(context);
+                            context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("stageEditorInvalidMob")
+                                    .replace("<input>", s));
+                            return new ConditionEntitiesPrompt(context);
                         }
                     } else {
-                        context.getForWhom().sendRawMessage(ChatColor.LIGHT_PURPLE + s + " " + ChatColor.RED 
-                                + Lang.get("stageEditorInvalidMob"));
-                        return new EntitiesPrompt(context);
+                        context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("stageEditorInvalidMob")
+                                .replace("<input>", s));
+                        return new ConditionEntitiesPrompt(context);
                     }
                 }
             }
-            return new EntityPrompt(context);
+            return new ConditionEntityPrompt(context);
         }
     }
     
-    public class ConditionNpcsPrompt extends QuestsEditorStringPrompt {
+    public class ConditionNpcsPrompt extends ConditionsEditorStringPrompt {
         
         public ConditionNpcsPrompt(final ConversationContext context) {
             super(context);
@@ -251,61 +247,58 @@ public class EntityPrompt extends QuestsEditorNumericPrompt {
 
         @Override
         public String getQueryText(final ConversationContext context) {
-            return Lang.get("conditionEditorNpcsPrompt");
+            return Lang.get("enterNpcUniqueIds");
         }
         
         @Override
-        public @NotNull String getPromptText(final ConversationContext context) {
-            if (context.getPlugin() != null) {
-                final QuestsEditorPostOpenStringPromptEvent event
-                        = new QuestsEditorPostOpenStringPromptEvent(context, this);
-                context.getPlugin().getServer().getPluginManager().callEvent(event);
-            }
+        public @NotNull String getPromptText(final @NotNull ConversationContext context) {
+            final ConditionsEditorPostOpenStringPromptEvent event
+                    = new ConditionsEditorPostOpenStringPromptEvent(context, this);
+            plugin.getServer().getPluginManager().callEvent(event);
             
             if (context.getForWhom() instanceof Player) {
                 final Set<UUID> selectingNpcs = plugin.getQuestFactory().getSelectingNpcs();
                 selectingNpcs.add(((Player) context.getForWhom()).getUniqueId());
                 plugin.getQuestFactory().setSelectingNpcs(selectingNpcs);
-                return ChatColor.YELLOW + getQueryText(context) + "\n" + ChatColor.GOLD + Lang.get("npcHint");
+                return ChatColor.YELLOW + Lang.get("questEditorClickNPCStart");
             } else {
                 return ChatColor.YELLOW + getQueryText(context);
             }
         }
 
         @Override
+        @SuppressWarnings("unchecked")
         public Prompt acceptInput(final @NotNull ConversationContext context, final String input) {
             if (input == null) {
                 return null;
             }
             if (!input.equalsIgnoreCase(Lang.get("cmdCancel"))) {
-                final LinkedList<Integer> npcIds = new LinkedList<>();
-                try {
-                    for (final String s : input.split(" ")) {
-                        final int i = Integer.parseInt(s);
-                        if (i > -1) {
-                            if (CitizensAPI.getNPCRegistry().getById(i) == null) {
-                                context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("questEditorInvalidNPC"));
-                                return new ConditionNpcsPrompt(context);
-                            }
-                            npcIds.add(i);
-                            context.setSessionData(CK.C_WHILE_RIDING_NPC, npcIds);
+                final LinkedList<String> npcs = context.getSessionData(CK.C_WHILE_RIDING_NPC) != null
+                        ? (LinkedList<String>) context.getSessionData(CK.C_WHILE_RIDING_NPC) : new LinkedList<>();
+                for (final String s : input.split(" ")) {
+                    try {
+                        final UUID uuid = UUID.fromString(s);
+                        if (plugin.getDependencies().getNPCEntity(uuid) != null && npcs != null) {
+                            npcs.add(uuid.toString());
                         } else {
-                            context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("questEditorInvalidNPC"));
+                            context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("stageEditorInvalidNPC")
+                                    .replace("<input>", s));
                             return new ConditionNpcsPrompt(context);
                         }
+                    } catch (final IllegalArgumentException e) {
+                        context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("stageEditorNotListOfUniqueIds")
+                                .replace("<data>", input));
+                        return new ConditionNpcsPrompt(context);
                     }
-                } catch (final NumberFormatException e) {
-                    context.getForWhom().sendRawMessage(ChatColor.RED 
-                            + Lang.get("reqNotANumber").replace("<input>", input));
-                    return new ConditionNpcsPrompt(context);
                 }
+                context.setSessionData(CK.C_WHILE_RIDING_NPC, npcs);
             }
             if (context.getForWhom() instanceof Player) {
                 final Set<UUID> selectingNpcs = plugin.getQuestFactory().getSelectingNpcs();
                 selectingNpcs.remove(((Player) context.getForWhom()).getUniqueId());
                 plugin.getQuestFactory().setSelectingNpcs(selectingNpcs);
             }
-            return new EntityPrompt(context);
+            return new ConditionEntityPrompt(context);
         }
     }
 }

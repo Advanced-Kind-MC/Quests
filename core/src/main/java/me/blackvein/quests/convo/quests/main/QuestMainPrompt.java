@@ -13,24 +13,23 @@
 package me.blackvein.quests.convo.quests.main;
 
 import com.sk89q.worldguard.protection.managers.RegionManager;
-import me.blackvein.quests.quests.IQuest;
 import me.blackvein.quests.Quests;
 import me.blackvein.quests.convo.QuestsNumericPrompt;
 import me.blackvein.quests.convo.generic.ItemStackPrompt;
 import me.blackvein.quests.convo.quests.QuestsEditorNumericPrompt;
 import me.blackvein.quests.convo.quests.QuestsEditorStringPrompt;
-import me.blackvein.quests.convo.quests.options.OptionsPrompt;
-import me.blackvein.quests.convo.quests.planner.PlannerPrompt;
-import me.blackvein.quests.convo.quests.requirements.RequirementsPrompt;
-import me.blackvein.quests.convo.quests.rewards.RewardsPrompt;
-import me.blackvein.quests.convo.quests.stages.StageMenuPrompt;
+import me.blackvein.quests.convo.quests.options.QuestOptionsPrompt;
+import me.blackvein.quests.convo.quests.planner.QuestPlannerPrompt;
+import me.blackvein.quests.convo.quests.requirements.QuestRequirementsPrompt;
+import me.blackvein.quests.convo.quests.rewards.QuestRewardsPrompt;
+import me.blackvein.quests.convo.quests.stages.QuestStageMenuPrompt;
 import me.blackvein.quests.events.editor.quests.QuestsEditorPostOpenNumericPromptEvent;
 import me.blackvein.quests.events.editor.quests.QuestsEditorPostOpenStringPromptEvent;
+import me.blackvein.quests.quests.IQuest;
 import me.blackvein.quests.reflect.worldguard.WorldGuardAPI;
 import me.blackvein.quests.util.CK;
 import me.blackvein.quests.util.ItemUtil;
 import me.blackvein.quests.util.Lang;
-import net.citizensnpcs.api.CitizensAPI;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -49,6 +48,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -107,7 +107,7 @@ public class QuestMainPrompt extends QuestsEditorNumericPrompt {
                 return ChatColor.GRAY;
             }
         case 7:
-            if (plugin.getDependencies().getCitizens() != null) {
+            if (plugin.getDependencies().getCitizens() != null || plugin.getDependencies().getZnpcs() != null) {
                 return ChatColor.BLUE;
             } else {
                 return ChatColor.GRAY;
@@ -131,7 +131,8 @@ public class QuestMainPrompt extends QuestsEditorNumericPrompt {
         case 3:
             return ChatColor.YELLOW + Lang.get("questEditorFinishMessage");
         case 4:
-            if (context.getSessionData(CK.Q_START_NPC) == null || plugin.getDependencies().getCitizens() != null) {
+            if (context.getSessionData(CK.Q_START_NPC) == null || plugin.getDependencies().getCitizens() != null
+                    || plugin.getDependencies().getZnpcs() != null) {
                 return ChatColor.YELLOW + Lang.get("questEditorNPCStart");
             } else {
                 return ChatColor.GRAY + Lang.get("questEditorNPCStart");
@@ -149,7 +150,7 @@ public class QuestMainPrompt extends QuestsEditorNumericPrompt {
                 return ChatColor.GRAY + Lang.get("questWGSetRegion");
             }
         case 7:
-            if (plugin.getDependencies().getCitizens() != null) {
+            if (plugin.getDependencies().getCitizens() != null || plugin.getDependencies().getZnpcs() != null) {
                 return ChatColor.YELLOW + Lang.get("questEditorSetGUI");
             } else {
                 return ChatColor.GRAY + Lang.get("questEditorSetGUI");
@@ -192,16 +193,14 @@ public class QuestMainPrompt extends QuestsEditorNumericPrompt {
             return ChatColor.GRAY + "(" + ChatColor.AQUA + context.getSessionData(CK.Q_FINISH_MESSAGE) 
                     + ChatColor.RESET + ChatColor.GRAY + ")";
         case 4:
-            if (context.getSessionData(CK.Q_START_NPC) == null && plugin.getDependencies().getCitizens() 
-                    != null) {
+            if (context.getSessionData(CK.Q_START_NPC) == null && (plugin.getDependencies().getCitizens() != null
+                    || plugin.getDependencies().getZnpcs() != null)) {
                 return ChatColor.GRAY + "(" + Lang.get("noneSet") + ")";
-            } else if (plugin.getDependencies().getCitizens() != null) {
-                final Integer id = (Integer) context.getSessionData(CK.Q_START_NPC);
-                if (id != null) {
-                    return ChatColor.GRAY + "(" + ChatColor.AQUA + CitizensAPI.getNPCRegistry().getById(id).getName()
-                            + ChatColor.RESET + ChatColor.GRAY + ")";
-                }
-
+            } else if (plugin.getDependencies().getCitizens() != null || plugin.getDependencies().getZnpcs() != null) {
+                final UUID uuid = UUID.fromString((String) Objects.requireNonNull(context
+                        .getSessionData(CK.Q_START_NPC)));
+                return ChatColor.GRAY + "(" + ChatColor.AQUA + plugin.getDependencies().getNPCName(uuid)
+                        + ChatColor.RESET + ChatColor.GRAY + ")";
             } else {
                 return ChatColor.GRAY + "(" + Lang.get("notInstalled") + ")";
             }
@@ -227,7 +226,7 @@ public class QuestMainPrompt extends QuestsEditorNumericPrompt {
                 return ChatColor.GRAY + "(" + Lang.get("notInstalled") + ")";
             }
         case 7:
-            if (plugin.getDependencies().getCitizens() != null) {
+            if (plugin.getDependencies().getCitizens() != null || plugin.getDependencies().getZnpcs() != null) {
                 if (context.getSessionData(CK.Q_GUIDISPLAY) == null) {
                     return ChatColor.GRAY +  "(" + Lang.get("noneSet") + ")";
                 } else {
@@ -246,11 +245,17 @@ public class QuestMainPrompt extends QuestsEditorNumericPrompt {
     public @NotNull String getBasicPromptText(final @NotNull ConversationContext context) {
         final QuestsEditorPostOpenNumericPromptEvent event = new QuestsEditorPostOpenNumericPromptEvent(context, this);
         plugin.getServer().getPluginManager().callEvent(event);
-        
+
         final StringBuilder text = new StringBuilder(ChatColor.GOLD + "- " + getTitle(context).replaceFirst(": ", ": "
                 + ChatColor.AQUA) + ChatColor.GOLD + " -");
-        for (int i = 1; i <= size; i++) {
-            text.append("\n").append(getNumberColor(context, i)).append(ChatColor.BOLD).append(i).append(ChatColor.RESET).append(" - ").append(getSelectionText(context, i)).append(" ").append(getAdditionalText(context, i));
+        try {
+            for (int i = 1; i <= size; i++) {
+                text.append("\n").append(getNumberColor(context, i)).append(ChatColor.BOLD).append(i)
+                        .append(ChatColor.RESET).append(" - ").append(getSelectionText(context, i)).append(" ")
+                        .append(getAdditionalText(context, i));
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
         return text.toString();
     }
@@ -265,7 +270,7 @@ public class QuestMainPrompt extends QuestsEditorNumericPrompt {
         case 3:
             return new QuestFinishMessagePrompt(context);
         case 4:
-            if (plugin.getDependencies().getCitizens() != null) {
+            if (plugin.getDependencies().getCitizens() != null || plugin.getDependencies().getZnpcs() != null) {
                 return new QuestNPCStartPrompt(context);
             } else {
                 return new QuestMainPrompt(context);
@@ -287,21 +292,21 @@ public class QuestMainPrompt extends QuestsEditorNumericPrompt {
                 return new QuestMainPrompt(context);
             }
         case 7:
-            if (plugin.getDependencies().getCitizens() != null) {
+            if (plugin.getDependencies().getCitizens() != null || plugin.getDependencies().getZnpcs() != null) {
                 return new QuestGuiDisplayPrompt(context);
             } else {
                 return new QuestMainPrompt(context);
             }
         case 8:
-            return new RequirementsPrompt(context);
+            return new QuestRequirementsPrompt(context);
         case 9:
-            return new PlannerPrompt(context);
+            return new QuestPlannerPrompt(context);
         case 10:
-            return new StageMenuPrompt(context);
+            return new QuestStageMenuPrompt(context);
         case 11:
-            return new RewardsPrompt(context);
+            return new QuestRewardsPrompt(context);
         case 12:
-            return new OptionsPrompt(context);
+            return new QuestOptionsPrompt(context);
         case 13:
             return new QuestSavePrompt(context);
         case 14:
@@ -432,7 +437,8 @@ public class QuestMainPrompt extends QuestsEditorNumericPrompt {
 
         @Override
         public @NotNull String getPromptText(final @NotNull ConversationContext context) {
-            final QuestsEditorPostOpenStringPromptEvent event = new QuestsEditorPostOpenStringPromptEvent(context, this);
+            final QuestsEditorPostOpenStringPromptEvent event
+                    = new QuestsEditorPostOpenStringPromptEvent(context, this);
             plugin.getServer().getPluginManager().callEvent(event);
             
             return ChatColor.YELLOW + getQueryText(context);
@@ -475,15 +481,15 @@ public class QuestMainPrompt extends QuestsEditorNumericPrompt {
 
         @Override
         public @NotNull String getPromptText(final @NotNull ConversationContext context) {
-            final QuestsEditorPostOpenStringPromptEvent event = new QuestsEditorPostOpenStringPromptEvent(context, this);
+            final QuestsEditorPostOpenStringPromptEvent event
+                    = new QuestsEditorPostOpenStringPromptEvent(context, this);
             plugin.getServer().getPluginManager().callEvent(event);
             
             if (context.getForWhom() instanceof Player) {
                 final Set<UUID> selectingNpcs = plugin.getQuestFactory().getSelectingNpcs();
                 selectingNpcs.add(((Player) context.getForWhom()).getUniqueId());
                 plugin.getQuestFactory().setSelectingNpcs(selectingNpcs);
-                return ChatColor.YELLOW + getQueryText(context) + "\n" 
-                        + ChatColor.GOLD + Lang.get("npcHint");
+                return ChatColor.YELLOW + Lang.get("questEditorClickNPCStart");
             } else {
                 return ChatColor.YELLOW + getQueryText(context);
             }
@@ -496,23 +502,22 @@ public class QuestMainPrompt extends QuestsEditorNumericPrompt {
             }
             if (!input.equalsIgnoreCase(Lang.get("cmdCancel")) && !input.equalsIgnoreCase(Lang.get("cmdClear"))) {
                 try {
-                    final int i = Integer.parseInt(input);
-                    if (i > -1) {
-                        if (CitizensAPI.getNPCRegistry().getById(i) == null) {
-                            context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("questEditorInvalidNPC"));
-                            return new QuestNPCStartPrompt(context);
-                        }
-                        context.setSessionData(CK.Q_START_NPC, i);
-                        if (context.getForWhom() instanceof Player) {
-                            final Set<UUID> selectingNpcs = plugin.getQuestFactory().getSelectingNpcs();
-                            selectingNpcs.remove(((Player) context.getForWhom()).getUniqueId());
-                            plugin.getQuestFactory().setSelectingNpcs(selectingNpcs);
-                        }
-                        return new QuestMainPrompt(context);
+                    final UUID uuid = UUID.fromString(input);
+                    if (plugin.getDependencies().getNPCEntity(uuid) == null) {
+                        context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("stageEditorInvalidNPC")
+                                .replace("<input>", input));
+                        return new QuestNPCStartPrompt(context);
                     }
-                } catch (final NumberFormatException e) {
+                    context.setSessionData(CK.Q_START_NPC, uuid.toString());
+                    if (context.getForWhom() instanceof Player) {
+                        final Set<UUID> selectingNpcs = plugin.getQuestFactory().getSelectingNpcs();
+                        selectingNpcs.remove(((Player) context.getForWhom()).getUniqueId());
+                        plugin.getQuestFactory().setSelectingNpcs(selectingNpcs);
+                    }
+                    return new QuestMainPrompt(context);
+                } catch (final IllegalArgumentException e) {
                     context.getForWhom().sendRawMessage(ChatColor.RED 
-                            + Lang.get("reqNotANumber").replace("<input>", input));
+                            + Lang.get("reqNotAUniqueId").replace("<input>", input));
                     return new QuestNPCStartPrompt(context);
                 }
             } else if (input.equalsIgnoreCase(Lang.get("cmdClear"))) {
@@ -545,7 +550,8 @@ public class QuestMainPrompt extends QuestsEditorNumericPrompt {
 
         @Override
         public @NotNull String getPromptText(final @NotNull ConversationContext context) {
-            final QuestsEditorPostOpenStringPromptEvent event = new QuestsEditorPostOpenStringPromptEvent(context, this);
+            final QuestsEditorPostOpenStringPromptEvent event
+                    = new QuestsEditorPostOpenStringPromptEvent(context, this);
             plugin.getServer().getPluginManager().callEvent(event);
             
             return ChatColor.YELLOW + getQueryText(context);
@@ -606,7 +612,8 @@ public class QuestMainPrompt extends QuestsEditorNumericPrompt {
         
         @Override
         public @NotNull String getPromptText(final @NotNull ConversationContext context) {
-            final QuestsEditorPostOpenStringPromptEvent event = new QuestsEditorPostOpenStringPromptEvent(context, this);
+            final QuestsEditorPostOpenStringPromptEvent event
+                    = new QuestsEditorPostOpenStringPromptEvent(context, this);
             plugin.getServer().getPluginManager().callEvent(event);
             
             StringBuilder text = new StringBuilder(ChatColor.AQUA + getTitle(context) + "\n");
@@ -674,11 +681,8 @@ public class QuestMainPrompt extends QuestsEditorNumericPrompt {
     
     public class QuestGuiDisplayPrompt extends QuestsEditorNumericPrompt {
         
-        private final Quests plugin;
-        
         public QuestGuiDisplayPrompt(final ConversationContext context) {
             super(context);
-            this.plugin = (Quests)context.getPlugin();
         }
         
         private final int size = 3;
@@ -731,28 +735,15 @@ public class QuestMainPrompt extends QuestsEditorNumericPrompt {
             // Check/add newly made item
             if (context.getSessionData("tempStack") != null) {
                 final ItemStack stack = (ItemStack) context.getSessionData("tempStack");
-                boolean failed = false;
-                for (final IQuest quest : plugin.getLoadedQuests()) {
-                    if (quest.getGUIDisplay() != null) {
-                        if (ItemUtil.compareItems(stack, quest.getGUIDisplay(), false) == 0) {
-                            String error = Lang.get("questGUIError");
-                            error = error.replace("<quest>", ChatColor.DARK_PURPLE + quest.getName() + ChatColor.RED);
-                            context.getForWhom().sendRawMessage(ChatColor.RED + error);
-                            failed = true;
-                            break;
-                        }
-                    }
-                }
-                if (!failed) {
-                    context.setSessionData(CK.Q_GUIDISPLAY, context.getSessionData("tempStack"));
+                if (stack != null) {
+                    context.setSessionData(CK.Q_GUIDISPLAY, stack.clone());
                 }
                 ItemStackPrompt.clearSessionData(context);
             }
 
-            if (context.getPlugin() != null) {
-                final QuestsEditorPostOpenNumericPromptEvent event = new QuestsEditorPostOpenNumericPromptEvent(context, this);
-                context.getPlugin().getServer().getPluginManager().callEvent(event);
-            }
+            final QuestsEditorPostOpenNumericPromptEvent event
+                    = new QuestsEditorPostOpenNumericPromptEvent(context, this);
+            plugin.getServer().getPluginManager().callEvent(event);
 
             final StringBuilder text = new StringBuilder(ChatColor.GOLD + getTitle(context) + "\n");
             if (context.getSessionData(CK.Q_GUIDISPLAY) != null) {
@@ -762,7 +753,8 @@ public class QuestMainPrompt extends QuestsEditorNumericPrompt {
                 text.append(" ").append(ChatColor.GRAY).append("(").append(Lang.get("noneSet")).append(")\n");
             }
             for (int i = 1; i <= size; i++) {
-                text.append("\n").append(getNumberColor(context, i)).append(ChatColor.BOLD).append(i).append(ChatColor.RESET).append(" - ").append(getSelectionText(context, i));
+                text.append("\n").append(getNumberColor(context, i)).append(ChatColor.BOLD).append(i)
+                        .append(ChatColor.RESET).append(" - ").append(getSelectionText(context, i));
             }
             return text.toString();
         }
@@ -800,7 +792,8 @@ public class QuestMainPrompt extends QuestsEditorNumericPrompt {
         public String getTitle(final ConversationContext context) {
             return null;
         }
-        
+
+        @SuppressWarnings("unused")
         public ChatColor getNumberColor(final ConversationContext context, final int number) {
             switch (number) {
             case 1:
@@ -811,7 +804,8 @@ public class QuestMainPrompt extends QuestsEditorNumericPrompt {
                 return null;
             }
         }
-        
+
+        @SuppressWarnings("unused")
         public String getSelectionText(final ConversationContext context, final int number) {
             switch (number) {
             case 1:
@@ -859,7 +853,7 @@ public class QuestMainPrompt extends QuestsEditorNumericPrompt {
                 } else if (context.getSessionData(CK.Q_FINISH_MESSAGE) == null) {
                     context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("questEditorNeedFinishMessage"));
                     return new QuestMainPrompt(context);
-                } else if (new StageMenuPrompt(context).getStages(context) == 0) {
+                } else if (new QuestStageMenuPrompt(context).getStages(context) == 0) {
                     context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("questEditorNeedStages"));
                     return new QuestMainPrompt(context);
                 }
@@ -924,7 +918,8 @@ public class QuestMainPrompt extends QuestsEditorNumericPrompt {
         public String getTitle(final ConversationContext context) {
             return null;
         }
-        
+
+        @SuppressWarnings("unused")
         public ChatColor getNumberColor(final ConversationContext context, final int number) {
             switch (number) {
             case 1:
@@ -935,7 +930,8 @@ public class QuestMainPrompt extends QuestsEditorNumericPrompt {
                 return null;
             }
         }
-        
+
+        @SuppressWarnings("unused")
         public String getSelectionText(final ConversationContext context, final int number) {
             switch (number) {
             case 1:

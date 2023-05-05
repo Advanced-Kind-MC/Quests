@@ -34,6 +34,7 @@ public class CK {
     public static final String REQ_QUEST_POINTS = "questPointsReq";
     public static final String REQ_ITEMS = "itemReqs";
     public static final String REQ_ITEMS_REMOVE = "removeItemReqs";
+    public static final String REQ_EXP = "expReq";
     public static final String REQ_PERMISSION = "permissionReqs";
     public static final String REQ_MCMMO_SKILLS = "mcMMOSkillReqs";
     public static final String REQ_MCMMO_SKILL_AMOUNTS = "mcMMOSkillAmountReqs";
@@ -149,6 +150,7 @@ public class CK {
     public static final String OPT_SHARE_SAME_QUEST_ONLY = "shareSameQuestOnlyOpt";
     public static final String OPT_SHARE_DISTANCE = "shareDistance";
     public static final String OPT_HANDLE_OFFLINE_PLAYERS = "handleOfflinePlayers";
+    public static final String OPT_IGNORE_BLOCK_REPLACE = "ignoreBlockReplace";
     // Actions
     public static final String E_OLD_EVENT = "oldEvent";
     public static final String E_NAME = "evtName";
@@ -185,7 +187,10 @@ public class CK {
     public static final String C_WHILE_RIDING_NPC = "conRidingNpc";
     public static final String C_WHILE_PERMISSION = "conPermission";
     public static final String C_WHILE_HOLDING_MAIN_HAND = "conHoldingMainHand";
+    public static final String C_WHILE_WEARING = "conWearing";
     public static final String C_WHILE_WITHIN_WORLD = "conWithinWorld";
+    public static final String C_WHILE_WITHIN_TICKS_START = "conWithinTicksStart";
+    public static final String C_WHILE_WITHIN_TICKS_END = "conWithinTicksEnd";
     public static final String C_WHILE_WITHIN_BIOME = "conWithinBiome";
     public static final String C_WHILE_WITHIN_REGION = "conWithinRegion";
     public static final String C_WHILE_PLACEHOLDER_ID = "conPlaceholderId";

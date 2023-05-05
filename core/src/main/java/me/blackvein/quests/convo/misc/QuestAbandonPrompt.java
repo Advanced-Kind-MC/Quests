@@ -15,14 +15,31 @@ import org.jetbrains.annotations.NotNull;
 
 public class QuestAbandonPrompt extends MiscStringPrompt {
 
-    private ConversationContext cc;
+    private ConversationContext context;
+    private final Quests plugin;
 
+    /**
+     * @deprecated
+     */
+    @Deprecated
     public QuestAbandonPrompt() {
         super(null);
+        plugin = null;
+    }
+
+    public QuestAbandonPrompt(Quests plugin) {
+        super(null);
+        this.plugin = plugin;
     }
 
     public QuestAbandonPrompt(final ConversationContext context) {
         super(context);
+        plugin = (Quests)context.getPlugin();
+    }
+
+    @Override
+    public ConversationContext getConversationContext() {
+        return context;
     }
 
     private final int size = 2;
@@ -35,6 +52,7 @@ public class QuestAbandonPrompt extends MiscStringPrompt {
         return null;
     }
 
+    @SuppressWarnings("unused")
     public ChatColor getNumberColor(final ConversationContext context, final int number) {
         switch (number) {
             case 1:
@@ -46,6 +64,7 @@ public class QuestAbandonPrompt extends MiscStringPrompt {
         }
     }
 
+    @SuppressWarnings("unused")
     public String getSelectionText(final ConversationContext context, final int number) {
         switch (number) {
             case 1:
@@ -63,10 +82,9 @@ public class QuestAbandonPrompt extends MiscStringPrompt {
 
     @Override
     public @NotNull String getPromptText(final @NotNull ConversationContext context) {
-        this.cc = context;
-        final Quests plugin = (Quests)context.getPlugin();
+        this.context = context;
         if (plugin == null) {
-            return ChatColor.YELLOW + Lang.get("unknownError");
+            return ChatColor.YELLOW + Lang.get("itemCreateCriticalError");
         }
 
         final MiscPostQuestAbandonEvent event = new MiscPostQuestAbandonEvent(context, this);
@@ -80,11 +98,11 @@ public class QuestAbandonPrompt extends MiscStringPrompt {
         final TextComponent component = new TextComponent("");
         component.addExtra(ChatColor.YELLOW + getQueryText(context) + "  " + ChatColor.GREEN);
         final TextComponent yes = new TextComponent(getSelectionText(context, 1));
-        yes.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, Lang.get("yesWord")));
+        yes.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/quests choice " + Lang.get("yesWord")));
         component.addExtra(yes);
         component.addExtra(ChatColor.RESET + " / ");
         final TextComponent no = new TextComponent(getSelectionText(context, 2));
-        no.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, Lang.get("noWord")));
+        no.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/quests choice " + Lang.get("noWord")));
         component.addExtra(no);
 
         ((Player)context.getForWhom()).spigot().sendMessage(component);

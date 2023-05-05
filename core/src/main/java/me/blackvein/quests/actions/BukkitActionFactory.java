@@ -157,14 +157,14 @@ public class BukkitActionFactory implements ActionFactory, ConversationAbandoned
             context.setSessionData(CK.E_MESSAGE, event.getMessage());
         }
         if (event.isClearInv()) {
-            context.setSessionData(CK.E_CLEAR_INVENTORY, Lang.get("yesWord"));
+            context.setSessionData(CK.E_CLEAR_INVENTORY, true);
         } else {
-            context.setSessionData(CK.E_CLEAR_INVENTORY, Lang.get("noWord"));
+            context.setSessionData(CK.E_CLEAR_INVENTORY, false);
         }
         if (event.isFailQuest()) {
-            context.setSessionData(CK.E_FAIL_QUEST, Lang.get("yesWord"));
+            context.setSessionData(CK.E_FAIL_QUEST, true);
         } else {
-            context.setSessionData(CK.E_FAIL_QUEST, Lang.get("noWord"));
+            context.setSessionData(CK.E_FAIL_QUEST, false);
         }
         if (event.getItems() != null && !event.getItems().isEmpty()) {
             final LinkedList<ItemStack> items = new LinkedList<>(event.getItems());
@@ -350,15 +350,15 @@ public class BukkitActionFactory implements ActionFactory, ConversationAbandoned
             section.set("message", context.getSessionData(CK.E_MESSAGE));
         }
         if (context.getSessionData(CK.E_CLEAR_INVENTORY) != null) {
-            final String s = (String) context.getSessionData(CK.E_CLEAR_INVENTORY);
-            if (s != null && s.equalsIgnoreCase(Lang.get("yesWord"))) {
-                section.set("clear-inventory", true);
+            final Boolean b = (Boolean) context.getSessionData(CK.E_CLEAR_INVENTORY);
+            if (b != null) {
+                section.set("clear-inventory", b);
             }
         }
         if (context.getSessionData(CK.E_FAIL_QUEST) != null) {
-            final String s = (String) context.getSessionData(CK.E_FAIL_QUEST);
-            if (s != null && s.equalsIgnoreCase(Lang.get("yesWord"))) {
-                section.set("fail-quest", true);
+            final Boolean b = (Boolean) context.getSessionData(CK.E_FAIL_QUEST);
+            if (b != null) {
+                section.set("fail-quest", b);
             }
         }
         if (context.getSessionData(CK.E_ITEMS) != null) {
@@ -444,9 +444,9 @@ public class BukkitActionFactory implements ActionFactory, ConversationAbandoned
             }
         }
         if (context.getSessionData(CK.E_CANCEL_TIMER) != null) {
-            final String s = (String) context.getSessionData(CK.E_CANCEL_TIMER);
-            if (s != null && s.equalsIgnoreCase(Lang.get("yesWord"))) {
-                section.set("cancel-timer", true);
+            final Boolean b = (Boolean) context.getSessionData(CK.E_CANCEL_TIMER);
+            if (b != null) {
+                section.set("cancel-timer", b);
             }
         }
         if (context.getSessionData(CK.E_DENIZEN) != null) {

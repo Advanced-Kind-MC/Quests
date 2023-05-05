@@ -35,10 +35,16 @@ public interface ISettings {
     void setDisableCommandFeedback(final boolean disableCommandFeedback);
     boolean canGenFilesOnJoin();
     void setGenFilesOnJoin(final boolean genFilesOnJoin);
+    boolean canGiveJournalItem();
+    void setGiveJournalItem(final boolean giveJournalItem);
     boolean canIgnoreLockedQuests();
     void setIgnoreLockedQuests(final boolean ignoreLockedQuests);
     int getKillDelay();
     void setKillDelay(final int killDelay);
+    String getLanguage();
+    void setLanguage(final String language);
+    boolean canLanguageOverrideClient();
+    void setLanguageOverrideClient(final boolean languageOverrideClient);
     int getMaxQuests();
     void setMaxQuests(final int maxQuests);
     boolean canNpcEffects();
@@ -47,6 +53,8 @@ public interface ISettings {
     void setEffect(final String effect);
     String getRedoEffect();
     void setRedoEffect(final String redoEffect);
+    boolean canShowCompletedObjs();
+    void setShowCompletedObjs(final boolean showCompletedObjs);
     boolean canShowQuestReqs();
     void setShowQuestReqs(final boolean showQuestReqs);
     boolean canShowQuestTitles();

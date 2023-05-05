@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
+
     <parent>
         <groupId>me.blackvein.quests</groupId>
         <artifactId>quests-parent</artifactId>
-        <version>4.2.4</version>
+        <version>${revision}</version>
     </parent>
     <artifactId>quests-api</artifactId>
     
@@ -15,7 +16,7 @@
     
     <repositories>
         <repository>
-            <!-- CitizensBooks, DungeonsXL, GPS, mcMMO Classic, PhatLoots -->
+            <!-- DungeonsXL, mcMMO Classic, PhatLoots, Unite, ZNPCs -->
             <id>jitpack.io</id>
             <url>https://jitpack.io</url>
         </repository>
@@ -48,6 +49,11 @@
             <id>hc-repo</id>
             <url>https://nexus.hc.to/content/repositories/pub_releases/</url>
         </repository>
+        <repository>
+            <!-- AstralBooks -->
+            <id>repsy-release</id>
+            <url>https://repo.repsy.io/mvn/niconeko/release</url>
+        </repository>
     </repositories>
     
     <dependencies>
@@ -60,13 +66,13 @@
         <dependency>
             <groupId>net.citizensnpcs</groupId>
             <artifactId>citizensapi</artifactId>
-            <version>2.0.21-SNAPSHOT</version>
+            <version>2.0.30-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>com.denizenscript</groupId>
             <artifactId>denizen</artifactId>
-            <version>1.2.3-SNAPSHOT</version>
+            <version>1.2.5-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -83,8 +89,8 @@
         </dependency>
         <dependency>
             <groupId>com.herocraftonline.heroes</groupId>
-            <artifactId>heroes-stripped</artifactId>
-            <version>4dd3dd85</version>
+            <artifactId>Heroes</artifactId>
+            <version>1.9.26-RELEASE</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -102,13 +108,13 @@
         <dependency>
             <groupId>me.clip</groupId>
             <artifactId>placeholderapi</artifactId>
-            <version>2.9.2</version>
+            <version>2.11.2</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.nicuch</groupId>
-            <artifactId>CitizensBooks</artifactId>
-            <version>2.5.5</version>
+            <groupId>ro.niconeko</groupId>
+            <artifactId>astralbooks-api</artifactId>
+            <version>3.0.1</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -120,13 +126,19 @@
         <dependency>
             <groupId>com.alessiodp.parties</groupId>
             <artifactId>parties-api</artifactId>
-            <version>3.1.6</version>
+            <version>3.2.9</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.github.gonalez</groupId>
+            <artifactId>znpc-servers</artifactId>
+            <version>21a0650</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>com.github.PikaMug</groupId>
             <artifactId>Unite</artifactId>
-            <version>1.1.2</version>
+            <version>59dade0c7c</version>
             <scope>provided</scope>
         </dependency>
     </dependencies>
@@ -139,7 +151,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.8.1</version>
+                <version>3.10.1</version>
                 <configuration>
                     <source>1.8</source>
                     <target>1.8</target>

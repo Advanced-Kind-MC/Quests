@@ -221,7 +221,8 @@ public class QuestMenuPrompt extends QuestsEditorNumericPrompt {
             final QuestsEditorPostOpenStringPromptEvent event 
                     = new QuestsEditorPostOpenStringPromptEvent(context, this);
             plugin.getServer().getPluginManager().callEvent(event);
-            final List<String> names = plugin.getLoadedQuests().stream().map(IQuest::getName).collect(Collectors.toList());
+            final List<String> names = plugin.getLoadedQuests().stream().map(IQuest::getName)
+                    .collect(Collectors.toList());
             return sendClickableMenu(getTitle(context), names, getQueryText(context), context);
         }
 
@@ -265,7 +266,8 @@ public class QuestMenuPrompt extends QuestsEditorNumericPrompt {
             final QuestsEditorPostOpenStringPromptEvent event 
                     = new QuestsEditorPostOpenStringPromptEvent(context, this);
             plugin.getServer().getPluginManager().callEvent(event);
-            final List<String> names = plugin.getLoadedQuests().stream().map(IQuest::getName).collect(Collectors.toList());
+            final List<String> names = plugin.getLoadedQuests().stream().map(IQuest::getName)
+                    .collect(Collectors.toList());
             return sendClickableMenu(getTitle(context), names, getQueryText(context), context);
         }
 
@@ -279,8 +281,8 @@ public class QuestMenuPrompt extends QuestsEditorNumericPrompt {
                 final IQuest found = plugin.getQuestTemp(input);
                 if (found != null) {
                     for (final IQuest q : plugin.getLoadedQuests()) {
-                        if (q.getRequirements().getNeededQuests().contains(q) 
-                                || q.getRequirements().getBlockQuests().contains(q)) {
+                        if (q.getRequirements().getNeededQuestIds().contains(q.getId())
+                                || q.getRequirements().getBlockQuestIds().contains(q.getId())) {
                             used.add(q.getName());
                         }
                     }
@@ -324,7 +326,8 @@ public class QuestMenuPrompt extends QuestsEditorNumericPrompt {
         public String getTitle(final ConversationContext context) {
             return null;
         }
-        
+
+        @SuppressWarnings("unused")
         public ChatColor getNumberColor(final ConversationContext context, final int number) {
             switch (number) {
             case 1:
@@ -335,7 +338,8 @@ public class QuestMenuPrompt extends QuestsEditorNumericPrompt {
                 return null;
             }
         }
-        
+
+        @SuppressWarnings("unused")
         public String getSelectionText(final ConversationContext context, final int number) {
             switch (number) {
             case 1:

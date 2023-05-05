@@ -404,10 +404,10 @@ public class Action implements IAction {
         }
         if (book != null) {
             if (!book.isEmpty()) {
-                if (plugin.getDependencies().getCitizensBooksApi() != null) {
-                    if (plugin.getDependencies().getCitizensBooksApi().hasFilter(book)) {
-                        plugin.getDependencies().getCitizensBooksApi().openBook(player, plugin.getDependencies()
-                                .getCitizensBooksApi().getFilter(book));
+                if (plugin.getDependencies().getAstralBooksApi() != null) {
+                    if (plugin.getDependencies().getAstralBooksApi().hasFilterBook(book)) {
+                        plugin.getDependencies().getAstralBooksApi().openBook(player, plugin.getDependencies()
+                                .getAstralBooksApi().getFilterBook(book));
                     }
                 }
             }
@@ -417,7 +417,8 @@ public class Action implements IAction {
         }
         if (timer > 0) {
             player.sendMessage(ChatColor.GREEN + Lang.get(player, "timerStart")
-                    .replace("<time>", ChatColor.RED + MiscUtil.getTime(timer * 1000L) + ChatColor.GREEN));
+                    .replace("<time>", ChatColor.RED + MiscUtil.getTime(timer * 1000L) + ChatColor.GREEN)
+                    .replace("<quest>", ChatColor.GOLD + quest.getName() + ChatColor.GREEN));
             if (timer > 60) {
                 quester.getTimers().put(new ActionTimer(quester, quest, 60, false)
                         .runTaskLater(plugin, (timer - 60) * 20L).getTaskId(), quest);
@@ -462,7 +463,7 @@ public class Action implements IAction {
             }
         }
         if (denizenScript != null) {
-            plugin.getDenizenTrigger().runDenizenScript(denizenScript, quester);
+            plugin.getDenizenTrigger().runDenizenScript(denizenScript, quester, null);
         }
     }
 }

@@ -18,7 +18,6 @@ import me.blackvein.quests.quests.Objective;
 import me.blackvein.quests.QuestData;
 import me.blackvein.quests.enums.ObjectiveType;
 import me.blackvein.quests.module.ICustomObjective;
-import net.citizensnpcs.api.npc.NPC;
 import org.bukkit.DyeColor;
 import org.bukkit.Location;
 import org.bukkit.OfflinePlayer;
@@ -129,6 +128,8 @@ public interface IQuester extends Comparable<IQuester> {
 
     boolean canAcceptOffer(final IQuest quest, final boolean giveReason);
 
+    boolean isOnTime(final IQuest quest, final boolean giveReason);
+
     void takeQuest(final IQuest quest, final boolean ignoreRequirements);
 
     boolean abandonQuest(final IQuest quest, final String message);
@@ -139,15 +140,23 @@ public interface IQuester extends Comparable<IQuester> {
 
     void quitQuest(final IQuest quest, final String[] messages);
 
+    void listQuests(final IQuester quester, final int page);
+
     LinkedList<String> getCurrentRequirements(final IQuest quest, final boolean ignoreOverrides);
 
     LinkedList<String> getCurrentObjectives(final IQuest quest, final boolean ignoreOverrides);
+
+    void showCurrentObjectives(final IQuest quest, final IQuester quester, final boolean ignoreOverrides);
 
     LinkedList<String> getObjectives(final IQuest quest, final boolean ignoreOverrides);
 
     boolean containsObjective(final IQuest quest, final String name);
 
+    boolean hasObjective(final IQuest quest, final ObjectiveType type);
+
     boolean hasCustomObjective(final IQuest quest, final String name);
+
+    void showCurrentConditions(final IQuest quest, final IQuester quester);
 
     void breakBlock(final IQuest quest, final ItemStack itemStack);
 
@@ -163,8 +172,7 @@ public interface IQuester extends Comparable<IQuester> {
 
     void smeltItem(final IQuest quest, final ItemStack itemStack);
 
-    void enchantBook(final IQuest quest, final ItemStack itemStack,
-                     final Map<Enchantment, Integer> enchantsToAdd);
+    void enchantBook(final IQuest quest, final ItemStack itemStack, final Map<Enchantment, Integer> enchantsToAdd);
 
     void enchantItem(final IQuest quest, final ItemStack itemStack);
 
@@ -172,11 +180,11 @@ public interface IQuester extends Comparable<IQuester> {
 
     void consumeItem(final IQuest quest, final ItemStack itemStack);
 
-    void deliverToNPC(final IQuest quest, final NPC npc, final ItemStack itemStack);
+    void deliverToNPC(final IQuest quest, final UUID npc, final ItemStack itemStack);
 
-    void interactWithNPC(final IQuest quest, final NPC npc);
+    void interactWithNPC(final IQuest quest, final UUID npc);
 
-    void killNPC(final IQuest quest, final NPC npc);
+    void killNPC(final IQuest quest, final UUID npc);
 
     void milkCow(final IQuest quest);
 
@@ -195,7 +203,7 @@ public interface IQuester extends Comparable<IQuester> {
     void sayPassword(final IQuest quest, final AsyncPlayerChatEvent evt);
 
     void finishObjective(final IQuest quest, final Objective objective, final EntityType mob,
-                         final String extra, final NPC npc, final Location location, final DyeColor color,
+                         final String extra, final UUID npc, final Location location, final DyeColor color,
                          final String pass, final ICustomObjective co);
 
     boolean testComplete(final IQuest quest);
@@ -222,7 +230,7 @@ public interface IQuester extends Comparable<IQuester> {
 
     void checkQuest(final IQuest quest);
 
-    void showGUIDisplay(final NPC npc, final LinkedList<IQuest> quests);
+    void showGUIDisplay(final UUID npc, final LinkedList<IQuest> quests);
 
     void hardQuit(final IQuest quest);
 

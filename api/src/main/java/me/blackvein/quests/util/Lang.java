@@ -16,10 +16,12 @@ import me.blackvein.quests.QuestsAPI;
 import me.clip.placeholderapi.PlaceholderAPI;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
+import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.Plugin;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -37,20 +39,27 @@ import java.util.regex.Pattern;
 
 public class Lang {
 
-    private static String iso = "en-US";
-    private static final LinkedHashMap<String, String> langMap = new LinkedHashMap<>();
+    private static QuestsAPI plugin;
+    private static final LinkedHashMap<String, String> defaultLang = new LinkedHashMap<>();
+    private static final LinkedHashMap<String, LinkedHashMap<String, String>> otherLang = new LinkedHashMap<>();
     private static final Pattern hexPattern = Pattern.compile("(?i)%#([0-9A-F]{6})%");
-    
+
+    /**
+     * @deprecated Use Settings#getLanguage()
+     */
     public static String getISO() {
-        return iso;
+        return plugin.getSettings().getLanguage();
     }
-    
+
+    /**
+     * @deprecated Use Settings#setLanguage(String)
+     */
     public static void setISO(final String iso) {
-        Lang.iso = iso;
+        plugin.getSettings().setLanguage(iso);
     }
     
     public static Collection<String> values() {
-        return langMap.values();
+        return defaultLang.values();
     }
     
     /**
@@ -60,8 +69,58 @@ public class Lang {
      * @param key label as it appears in lang file, such as "journalNoQuests"
      * @return formatted string, plus processing through PlaceholderAPI by clip
      */
+    @SuppressWarnings("deprecation")
     public static String get(final Player player, final String key) {
-        return langMap.containsKey(key) ? LangToken.convertString(player, langMap.get(key)) : "NULL";
+        if (key == null) {
+            return null;
+        }
+        if (player == null) {
+            return get(key);
+        }
+        String locale;
+        try {
+            locale = player.getLocale();
+        } catch (NoSuchMethodError e) {
+            locale = player.spigot().getLocale();
+        }
+        final int separator = locale.indexOf("_");
+        if (separator == -1) {
+            return defaultLang.containsKey(key) ? LangToken.convertString(player, defaultLang.get(key)) : "NULL";
+        }
+        final String language = locale.substring(0, separator);
+        final String country = locale.substring(separator + 1).toUpperCase();
+        locale = language + "-" + country;
+        if (plugin.getSettings().canLanguageOverrideClient() || locale.equals(getISO())) {
+            return defaultLang.containsKey(key) ? LangToken.convertString(player, defaultLang.get(key)) : "NULL";
+        }
+        if (!otherLang.containsKey(locale)) {
+            try {
+                init(plugin, locale);
+            } catch (Exception e) {
+                return defaultLang.containsKey(key) ? LangToken.convertString(player, defaultLang.get(key)) : "NULL";
+            }
+        }
+        if (otherLang.get(locale).get(key) == null) {
+            return defaultLang.get(key);
+        }
+        return LangToken.convertString(otherLang.get(locale).get(key));
+    }
+
+    /**
+     * Get lang string AND pass sender for use with PlaceholderAPI, if installed
+     *
+     * @param commandSender the sender whom will receive the string
+     * @param key label as it appears in lang file, such as "journalNoQuests"
+     * @return formatted string, plus processing through PlaceholderAPI by clip
+     */
+    public static String get(final CommandSender commandSender, final String key) {
+        if (key == null) {
+            return null;
+        }
+        if (commandSender instanceof Player) {
+            return get((Player)commandSender, key);
+        }
+        return get(key);
     }
 
     /**
@@ -71,16 +130,20 @@ public class Lang {
      * @return formatted string
      */
     public static String get(final String key) {
-        return langMap.containsKey(key) ? LangToken.convertString(langMap.get(key)) : "NULL";
+        if (key == null) {
+            return null;
+        }
+        return defaultLang.containsKey(key) ? LangToken.convertString(defaultLang.get(key)) : "NULL";
     }
 
     /**
      * Get key for lang string
+     *
      * @param value The lang string
      * @return key or "NULL" as String
      */
     public static String getKey(final String value) {
-        for (final Entry<String, String> entry : langMap.entrySet()) {
+        for (final Entry<String, String> entry : defaultLang.entrySet()) {
             if (entry.getValue().equals(value)) {
                 return entry.getKey();
             }
@@ -90,12 +153,13 @@ public class Lang {
 
     /**
      * Get prefixed key for lang value
+     *
      * @param value The lang string
      * @param keyPrefix String that the key starts with
      * @return full key or "NULL" as String
      */
     public static String getKeyFromPrefix(final String keyPrefix, final String value) {
-        for (final Entry<String, String> entry : langMap.entrySet()) {
+        for (final Entry<String, String> entry : defaultLang.entrySet()) {
             if (entry.getValue().equalsIgnoreCase(value) && entry.getKey().toUpperCase().startsWith(keyPrefix)) {
                 return entry.getKey();
             }
@@ -104,83 +168,103 @@ public class Lang {
     }
 
     public static void clear() {
-        langMap.clear();
+        defaultLang.clear();
     }
 
     public static int size() {
-        return langMap.size();
+        return defaultLang.size();
     }
 
     public static String getModified(final String key, final String[] tokens) {
-        String orig = langMap.get(key);
+        String orig = defaultLang.get(key);
         for (int i = 0; i < tokens.length; i++) {
             orig = orig.replace("%" + (i + 1), tokens[i]);
         }
         return orig;
     }
-    
+
+    /**
+     * Send message if not null or empty
+     *
+     * @param player The player to send message to
+     * @param message The message to be sent
+     */
     public static void send(final Player player, final String message) {
         if (message != null && !ChatColor.stripColor(message).equals("")) {
             player.sendMessage(message);
         }
     }
 
-    public static void init(final QuestsAPI plugin) throws InvalidConfigurationException, IOException {
-        final File langFile = new File(plugin.getPluginDataFolder(), File.separator + "lang" + File.separator + iso + File.separator
-                + "strings.yml");
+    public static void init(final QuestsAPI plugin, String iso) throws InvalidConfigurationException, IOException {
+        Lang.plugin = plugin;
+        final File langFile = new File(plugin.getPluginDataFolder(), File.separator + "lang" + File.separator + iso
+                + File.separator + "strings.yml");
         final File langFile_new = new File(plugin.getPluginDataFolder(), File.separator + "lang" + File.separator + iso
                 + File.separator + "strings_new.yml");
-        final boolean exists_new = langFile_new.exists();
+        boolean exists_new = langFile_new.exists();
         final LinkedHashMap<String, String> allStrings = new LinkedHashMap<>();
-        if (langFile.exists() && iso.split("-").length > 1) {
-            final FileConfiguration config= YamlConfiguration
-                    .loadConfiguration(new InputStreamReader(new FileInputStream(langFile), StandardCharsets.UTF_8));
-            FileConfiguration config_new = null;
-            if (exists_new) {
-                config_new = YamlConfiguration.loadConfiguration(new InputStreamReader(
-                        new FileInputStream(langFile_new), StandardCharsets.UTF_8));
-            }
-            // Load user's lang file and determine new strings
-            for (final String key : config.getKeys(false)) {
-                allStrings.put(key, config.getString(key));
-                if (exists_new) {
-                    config_new.set(key, null);
+        if (!(langFile.exists() && iso.split("-").length > 1)) {
+            if (defaultLang.isEmpty()) {
+                plugin.getPluginLogger().severe("Failed loading lang files for " + iso
+                        + " because they were not found. Using default en-US instead");
+                plugin.getPluginLogger()
+                        .info("If the plugin has not generated language files, ensure Quests has write permissions");
+                plugin.getPluginLogger()
+                        .info("For help, visit https://pikamug.gitbook.io/quests/casual/translations");
+                plugin.getSettings().setLanguage("en-US");
+                if (plugin.getSettings().getConsoleLogging() > 3) {
+                    plugin.getPluginLogger().info("CodeSource: " + plugin.getClass().getProtectionDomain().getCodeSource()
+                            .toString());
+                    plugin.getPluginLogger().info("LocationPath: " + plugin.getClass().getProtectionDomain().getCodeSource()
+                            .getLocation().getPath());
                 }
             }
-            // Add new strings and notify user
-            if (exists_new) {
-                for (final String key : config_new.getKeys(false)) {
-                    final String value = config_new.getString(key);
-                    if (value != null) {
-                        allStrings.put(key, value);
-                        plugin.getPluginLogger().warning("There are new language phrases in /lang/" + iso
-                                + "/strings_new.yml for the current version!"
-                                + " You must transfer them to, or regenerate, strings.yml to remove this warning!");
-                    }
-                }
-                config_new.options().header("Below are any new strings for your current version of Quests! " 
-                        + "Transfer them to the strings.yml of the"
-                        + " same folder to stay up-to-date and suppress console warnings.");
-                config_new.options().copyHeader(true);
-                config_new.save(langFile_new);
-            }
-        } else {
-            plugin.getPluginLogger().severe("Failed loading lang files for " + iso 
-                    + " because they were not found. Using default en-US");
-            plugin.getPluginLogger()
-                    .info("If the plugin has not generated language files, ensure Quests has write permissions");
-            plugin.getPluginLogger()
-                    .info("For help, visit https://github.com/PikaMug/Quests/wiki/Casual-%E2%80%90-Translations");
-            iso = "en-US";
-            plugin.getPluginLogger().info("CodeSource: " + plugin.getClass().getProtectionDomain().getCodeSource()
-                    .toString());
-            plugin.getPluginLogger().info("LocationPath: " + plugin.getClass().getProtectionDomain().getCodeSource()
-                    .getLocation().getPath());
             final FileConfiguration config = YamlConfiguration.loadConfiguration(new InputStreamReader(Objects
                     .requireNonNull(plugin.getPluginResource("strings.yml")), StandardCharsets.UTF_8));
             for (final String key : config.getKeys(false)) {
                 allStrings.put(key, config.getString(key));
             }
+        }
+        FileConfiguration config;
+        if (langFile.length() > 4) {
+            config = YamlConfiguration
+                    .loadConfiguration(new InputStreamReader(new FileInputStream(langFile), StandardCharsets.UTF_8));
+        } else {
+            config = YamlConfiguration.loadConfiguration(new InputStreamReader(Objects
+                    .requireNonNull(plugin.getPluginResource("strings.yml")), StandardCharsets.UTF_8));
+        }
+        FileConfiguration config_new = null;
+        if (exists_new) {
+            if (langFile_new.length() > 5) {
+                config_new = YamlConfiguration.loadConfiguration(new InputStreamReader(
+                        new FileInputStream(langFile_new), StandardCharsets.UTF_8));
+            } else {
+                exists_new = false;
+            }
+        }
+        // Load user's lang file and determine new strings
+        for (final String key : config.getKeys(false)) {
+            allStrings.put(key, config.getString(key));
+            if (exists_new) {
+                config_new.set(key, null);
+            }
+        }
+        // Add new strings and notify console
+        if (exists_new) {
+            for (final String key : config_new.getKeys(false)) {
+                final String value = config_new.getString(key);
+                if (value != null) {
+                    allStrings.put(key, value);
+                    plugin.getPluginLogger().warning("There are new language phrases in /lang/" + iso
+                            + "/strings_new.yml for the current version!"
+                            + " You must transfer them to, or regenerate, strings.yml to remove this warning!");
+                }
+            }
+            config_new.options().header("Below are any new strings for your current version of Quests! "
+                    + "Transfer them to the strings.yml of the"
+                    + " same folder to stay up-to-date and suppress console warnings.");
+            config_new.options().copyHeader(true);
+            config_new.save(langFile_new);
         }
         
         final String cmdAdd = allStrings.get("cmdAdd");
@@ -219,8 +303,17 @@ public class Lang {
                 allStrings.put(entry.getKey(), entry.getValue().replace("<semicolon>", strSemicolon));
             }
         }
-        langMap.putAll(allStrings);
-        plugin.getPluginLogger().info("Loaded language " + iso + ". Translations via Crowdin");
+        if (iso.equals(getISO())) {
+            defaultLang.clear();
+            defaultLang.putAll(allStrings);
+        } else {
+            otherLang.put(iso, allStrings);
+        }
+        if (langFile.length() > 4) {
+            plugin.getPluginLogger().info("Loaded language " + iso + ". Translations via Crowdin");
+        } else {
+            plugin.getPluginLogger().info("Failed to load language " + iso + " due to lack of translations");
+        }
     }
 
     private static class LangToken {
@@ -256,12 +349,15 @@ public class Lang {
         }
 
         public static String convertString(String s) {
+            if (s == null) {
+                return null;
+            }
             if (tokenMap.isEmpty()) {
                 LangToken.init();
             }
-            for (final String token : tokenMap.keySet()) {
-                s = s.replace(token, tokenMap.get(token));
-                s = s.replace(token.toUpperCase(), tokenMap.get(token));
+            for (final Entry<String, String> token : tokenMap.entrySet()) {
+                s = s.replace(token.getKey(), token.getValue());
+                s = s.replace(token.getKey().toUpperCase(), token.getValue());
             }
             final Matcher matcher = hexPattern.matcher(s);
             while (matcher.find()) {
@@ -277,12 +373,16 @@ public class Lang {
         }
         
         public static String convertString(final Player p, String s) {
+            if (s == null) {
+                return null;
+            }
             if (tokenMap.isEmpty()) {
                 LangToken.init();
             }
             s = convertString(s);
-            if (Bukkit.getServer().getPluginManager().getPlugin("PlaceholderAPI") != null ) {
-                if (Bukkit.getServer().getPluginManager().getPlugin("PlaceholderAPI").isEnabled()) {
+            final Plugin placeholderApi = Bukkit.getServer().getPluginManager().getPlugin("PlaceholderAPI");
+            if (placeholderApi != null ) {
+                if (placeholderApi.isEnabled()) {
                     s = PlaceholderAPI.setPlaceholders(p, s);
                 }
             }

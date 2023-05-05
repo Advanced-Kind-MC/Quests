@@ -12,6 +12,7 @@
 
 package me.blackvein.quests.commands.quests.subcommands;
 
+import me.blackvein.quests.Quester;
 import me.blackvein.quests.Quests;
 import me.blackvein.quests.commands.QuestsSubCommand;
 import me.blackvein.quests.player.IQuester;
@@ -65,21 +66,21 @@ public class QuestsQuitCommand extends QuestsSubCommand {
 
     @Override
     public void execute(CommandSender cs, String[] args) {
+        if (args.length == 1) {
+            // Shows command usage
+            return;
+        }
         if (assertNonPlayer(cs)) {
             return;
         }
         final Player player = (Player) cs;
         if (player.hasPermission(getPermission())) {
-            if (args.length == 1) {
-                Lang.send(player, ChatColor.RED + Lang.get(player, "COMMAND_QUIT_HELP"));
-                return;
-            }
             final IQuester quester = plugin.getQuester(player.getUniqueId());
             if (!quester.getCurrentQuestsTemp().isEmpty()) {
                 final IQuest quest = plugin.getQuestTemp(concatArgArray(args, 1, args.length - 1, ' '));
                 if (quest != null) {
                     if (quest.getOptions().canAllowQuitting()) {
-                        final String msg = ChatColor.YELLOW + Lang.get("questQuit").replace("<quest>",
+                        final String msg = ChatColor.YELLOW + Lang.get(player, "questQuit").replace("<quest>",
                                 ChatColor.DARK_PURPLE + quest.getName() + ChatColor.YELLOW);
                         quester.abandonQuest(quest, msg);
                     } else {
@@ -100,9 +101,20 @@ public class QuestsQuitCommand extends QuestsSubCommand {
     public List<String> tabComplete(CommandSender commandSender, String[] args) {
         if (args.length == 2) {
             final List<String> results = new ArrayList<>();
-            for (final IQuest quest : plugin.getLoadedQuests()) {
-                if (quest.getName().toLowerCase().startsWith(args[1].toLowerCase())) {
-                    results.add(ChatColor.stripColor(quest.getName()));
+            if (commandSender instanceof Player) {
+                final Quester quester = plugin.getQuester(((Player) commandSender).getUniqueId());
+                if (quester != null) {
+                    for (final IQuest quest : quester.getCurrentQuests().keySet()) {
+                        if (quest.getName().toLowerCase().startsWith(args[1].toLowerCase())) {
+                            results.add(ChatColor.stripColor(quest.getName()));
+                        }
+                    }
+                }
+            } else {
+                for (final IQuest quest : plugin.getLoadedQuests()) {
+                    if (quest.getName().toLowerCase().startsWith(args[1].toLowerCase())) {
+                        results.add(ChatColor.stripColor(quest.getName()));
+                    }
                 }
             }
             return results;

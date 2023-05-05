@@ -23,6 +23,7 @@ import org.bukkit.entity.Player;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -44,6 +45,10 @@ public class ConfigUtil {
             return false;
         }
         for (final Object o : list) {
+            if (o == null) {
+                Bukkit.getLogger().severe(clazz.getSimpleName() + " type in Quests file was \"null\"");
+                return false;
+            }
             if (!clazz.isAssignableFrom(o.getClass())) {
                 return false;
             }
@@ -104,7 +109,7 @@ public class ConfigUtil {
         String parsed = parseString(s);
         if (parsed.contains("<npc>")) {
             if (quest.getNpcStart() != null) {
-                parsed = parsed.replace("<npc>", quest.getNpcStart().getName());
+                parsed = parsed.replace("<npc>", quest.getNpcStartName());
             } else {
                 Bukkit.getLogger().warning(quest.getName() + " quest uses <npc> tag but doesn't have an NPC start set");
             }
@@ -119,7 +124,7 @@ public class ConfigUtil {
         String parsed = parseString(s);
         if (parsed.contains("<npc>")) {
             if (quest.getNpcStart() != null) {
-                parsed = parsed.replace("<npc>", quest.getNpcStart().getName());
+                parsed = parsed.replace("<npc>", quest.getNpcStartName());
             } else {
                 Bukkit.getLogger().warning(quest.getName() + " quest uses <npc> tag but doesn't have an NPC start set");
             }
@@ -127,21 +132,27 @@ public class ConfigUtil {
         return parsed.split("\n");
     }
 
-    public static String[] parseStringWithPossibleLineBreaks(final String s, final NPC npc) {
+    public static String[] parseStringWithPossibleLineBreaks(final String s, final NPC npc, int amount) {
         String parsed = parseString(s);
         if (parsed.contains("<npc>")) {
             parsed = parsed.replace("<npc>", npc.getName());
+        }
+        if (parsed.contains("<amount>")) {
+            parsed = parsed.replace("<amount>", String.valueOf(amount));
         }
         return parsed.split("\n");
     }
     
     public static String parseString(final String s, final IQuest quest) {
         String parsed = parseString(s);
-        if (parsed.contains("<npc>")) {
-            if (quest.getNpcStart() != null) {
-                parsed = parsed.replace("<npc>", quest.getNpcStart().getName());
-            } else {
-                Bukkit.getLogger().warning(quest.getName() + " quest uses <npc> tag but doesn't have an NPC start set");
+        if (quest != null && quest.getName() != null) {
+            parsed = parsed.replace("<quest>", quest.getName());
+            if (parsed.contains("<npc>")) {
+                if (quest.getNpcStart() != null) {
+                    parsed = parsed.replace("<npc>", quest.getNpcStartName());
+                } else {
+                    Bukkit.getLogger().warning(quest.getName() + " quest uses <npc> tag but doesn't have an NPC start set");
+                }
             }
         }
         return parsed;
@@ -155,10 +166,10 @@ public class ConfigUtil {
         return parsed;
     }
 
-    public static String parseString(final String s, final NPC npc) {
+    public static String parseString(final String s, final UUID npc) {
         String parsed = parseString(s);
-        if (parsed.contains("<npc>")) {
-            parsed = parsed.replace("<npc>", npc.getName());
+        if (Dependencies.citizens != null && parsed.contains("<npc>")) {
+            parsed = parsed.replace("<npc>", Dependencies.citizens.getNPCRegistry().getByUniqueId(npc).getName());
         }
         return parsed;
     }

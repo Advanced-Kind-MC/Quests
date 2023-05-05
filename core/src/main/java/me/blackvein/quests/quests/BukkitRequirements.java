@@ -22,10 +22,11 @@ import java.util.Map;
 public class BukkitRequirements implements Requirements {
     private int money = 0;
     private int questPoints = 0;
+    private int exp = 0;
     private List<ItemStack> items = new LinkedList<>();
     private List<Boolean> removeItems = new LinkedList<>();
-    private List<IQuest> neededQuests = new LinkedList<>();
-    private List<IQuest> blockQuests = new LinkedList<>();
+    private List<String> neededQuestIds = new LinkedList<>();
+    private List<String> blockQuestIds = new LinkedList<>();
     private List<String> permissions = new LinkedList<>();
     private List<String> mcmmoSkills = new LinkedList<>();
     private List<Integer> mcmmoAmounts = new LinkedList<>();
@@ -46,6 +47,12 @@ public class BukkitRequirements implements Requirements {
     public void setQuestPoints(final int questPoints) {
         this.questPoints = questPoints;
     }
+    public int getExp() {
+        return exp;
+    }
+    public void setExp(final int exp) {
+        this.exp = exp;
+    }
     public List<ItemStack> getItems() {
         return items;
     }
@@ -58,17 +65,17 @@ public class BukkitRequirements implements Requirements {
     public void setRemoveItems(final List<Boolean> removeItems) {
         this.removeItems = removeItems;
     }
-    public List<IQuest> getNeededQuests() {
-        return neededQuests;
+    public List<String> getNeededQuestIds() {
+        return neededQuestIds;
     }
-    public void setNeededQuests(final List<IQuest> neededQuests) {
-        this.neededQuests = neededQuests;
+    public void setNeededQuestIds(final List<String> neededQuestIds) {
+        this.neededQuestIds = neededQuestIds;
     }
-    public List<IQuest> getBlockQuests() {
-        return blockQuests;
+    public List<String> getBlockQuestIds() {
+        return blockQuestIds;
     }
-    public void setBlockQuests(final List<IQuest> blockQuests) {
-        this.blockQuests = blockQuests;
+    public void setBlockQuestIds(final List<String> blockQuestIds) {
+        this.blockQuestIds = blockQuestIds;
     }
     public List<String> getPermissions() {
         return permissions;
@@ -117,10 +124,11 @@ public class BukkitRequirements implements Requirements {
     public boolean hasRequirement() {
         if (money != 0) { return true; }
         if (questPoints != 0) { return true; }
+        if (exp != 0) { return true; }
         if (!items.isEmpty()) { return true; }
         if (!removeItems.isEmpty()) { return true; }
-        if (!neededQuests.isEmpty()) { return true; }
-        if (!blockQuests.isEmpty()) { return true; }
+        if (!neededQuestIds.isEmpty()) { return true; }
+        if (!blockQuestIds.isEmpty()) { return true; }
         if (!permissions.isEmpty()) { return true; }
         if (!mcmmoSkills.isEmpty()) { return true; }
         if (!mcmmoAmounts.isEmpty()) { return true; }

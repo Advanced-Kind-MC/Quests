@@ -14,15 +14,16 @@ package me.blackvein.quests;
 
 import com.alessiodp.parties.api.Parties;
 import com.alessiodp.parties.api.interfaces.PartiesAPI;
-import com.codisimus.plugins.phatloots.PhatLoots;
 import com.gmail.nossr50.datatypes.player.McMMOPlayer;
 import com.gmail.nossr50.datatypes.skills.SkillType;
 import com.gmail.nossr50.mcMMO;
 import com.gmail.nossr50.util.player.UserManager;
 import com.herocraftonline.heroes.Heroes;
 import com.herocraftonline.heroes.characters.Hero;
+import io.github.znetworkw.znpcservers.ServersNPC;
+import io.github.znetworkw.znpcservers.npc.NPC;
 import me.blackvein.quests.dependencies.IDependencies;
-import me.blackvein.quests.listeners.NpcListener;
+import me.blackvein.quests.listeners.CitizensListener;
 import me.blackvein.quests.player.IQuester;
 import me.blackvein.quests.reflect.denizen.DenizenAPI;
 import me.blackvein.quests.reflect.worldguard.WorldGuardAPI;
@@ -32,17 +33,23 @@ import net.citizensnpcs.api.CitizensPlugin;
 import net.milkbowl.vault.economy.Economy;
 import net.milkbowl.vault.permission.Permission;
 import org.bukkit.Location;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.HandlerList;
 import org.bukkit.plugin.RegisteredListener;
 import org.bukkit.plugin.RegisteredServiceProvider;
-import ro.nicuch.citizensbooks.CitizensBooksAPI;
-import ro.nicuch.citizensbooks.CitizensBooksPlugin;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import ro.niconeko.astralbooks.api.AstralBooksAPI;
+import ro.niconeko.astralbooks.api.AstralBooks;
 
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 public class Dependencies implements IDependencies {
     
@@ -51,14 +58,14 @@ public class Dependencies implements IDependencies {
     private static Permission permission = null;
     private static PartyProvider partyProvider = null;
     private static final Set<PartyProvider> partyProviders = new HashSet<>();
-    private static WorldGuardAPI worldGuardApi = null;
+    private static WorldGuardAPI worldGuard = null;
     private static mcMMO mcmmo = null;
     private static Heroes heroes = null;
-    private static PhatLoots phatLoots = null;
     public static PlaceholderAPIPlugin placeholder = null;
-    private static CitizensPlugin citizens = null;
-    private static DenizenAPI denizenApi = null;
-    private static CitizensBooksAPI citizensBooks = null;
+    public static CitizensPlugin citizens = null;
+    private static DenizenAPI denizen = null;
+    private static AstralBooksAPI astralBooks = null;
+    private static ServersNPC znpcs = null;
     private static PartiesAPI parties = null;
     
     public Dependencies(final Quests plugin) {
@@ -102,10 +109,10 @@ public class Dependencies implements IDependencies {
     }
     
     public WorldGuardAPI getWorldGuardApi() {
-        if (worldGuardApi == null && isPluginAvailable("WorldGuard")) {
-            worldGuardApi = new WorldGuardAPI(plugin.getServer().getPluginManager().getPlugin("WorldGuard"));
+        if (worldGuard == null && isPluginAvailable("WorldGuard")) {
+            worldGuard = new WorldGuardAPI(plugin.getServer().getPluginManager().getPlugin("WorldGuard"));
         }
-        return worldGuardApi;
+        return worldGuard;
     }
     
     public mcMMO getMcmmoClassic() {
@@ -125,19 +132,6 @@ public class Dependencies implements IDependencies {
             heroes = (Heroes) plugin.getServer().getPluginManager().getPlugin("Heroes");
         }
         return heroes;
-    }
-    
-    public PhatLoots getPhatLoots() {
-        if (phatLoots == null && isPluginAvailable("PhatLoots")) {
-            try {
-                phatLoots = (PhatLoots) plugin.getServer().getPluginManager().getPlugin("PhatLoots");
-                plugin.getLogger().info("Sucessfully linked Quests with PhatLoots " 
-                        + phatLoots.getDescription().getVersion());
-            } catch (final NoClassDefFoundError e) {
-                plugin.getLogger().warning("Unofficial version of PhatLoots found. PhatLoots in Quests not enabled.");
-            }
-        }
-        return phatLoots;
     }
     
     public PlaceholderAPIPlugin getPlaceholderApi() {
@@ -160,12 +154,12 @@ public class Dependencies implements IDependencies {
                 citizens = (CitizensPlugin) plugin.getServer().getPluginManager().getPlugin("Citizens");
                 boolean found = false;
                 for (final RegisteredListener listener : HandlerList.getRegisteredListeners(plugin)) {
-                    if (listener.getListener() instanceof NpcListener) {
+                    if (listener.getListener() instanceof CitizensListener) {
                         found = true;
                     }
                 }
                 if (!found) {
-                    plugin.getServer().getPluginManager().registerEvents(plugin.getNpcListener(), plugin);
+                    plugin.getServer().getPluginManager().registerEvents(plugin.getCitizensListener(), plugin);
                     if (plugin.getSettings().canNpcEffects()) {
                         plugin.getServer().getScheduler().scheduleSyncRepeatingTask(plugin, plugin.getNpcEffectThread(),
                                 20, 20);
@@ -184,22 +178,38 @@ public class Dependencies implements IDependencies {
     }
     
     public DenizenAPI getDenizenApi() {
-        if (denizenApi == null && isPluginAvailable("Denizen")) {
-            denizenApi = new DenizenAPI();
+        if (denizen == null && isPluginAvailable("Denizen")) {
+            denizen = new DenizenAPI();
         }
-        return denizenApi;
+        return denizen;
     }
     
-    public CitizensBooksAPI getCitizensBooksApi() {
-        if (citizensBooks == null && isPluginAvailable("CitizensBooks")) {
+    public AstralBooksAPI getAstralBooksApi() {
+        if (astralBooks == null && isPluginAvailable("AstralBooks")) {
             try {
-                citizensBooks = ((CitizensBooksPlugin) Objects.requireNonNull(plugin.getServer().getPluginManager()
-                        .getPlugin("CitizensBooks"))).getAPI();
+                astralBooks = ((AstralBooks) Objects.requireNonNull(plugin.getServer().getPluginManager()
+                        .getPlugin("AstralBooks"))).getAPI();
             } catch (final Exception e) {
                 e.printStackTrace();
             }
         }
-        return citizensBooks;
+        return astralBooks;
+    }
+
+    public ServersNPC getZnpcs() {
+        if (znpcs == null) {
+            znpcs = (ServersNPC) plugin.getServer().getPluginManager().getPlugin("ServersNPC");
+        }
+        return znpcs;
+    }
+
+    public Set<UUID> getZnpcsUuids() {
+        if (znpcs != null && isPluginAvailable("ServersNPC")) {
+            // TODO - it seems ZNPCs UUIDs do not persist restart
+            return io.github.znetworkw.znpcservers.npc.NPC.all().stream()
+                    .map(io.github.znetworkw.znpcservers.npc.NPC::getUUID).collect(Collectors.toSet());
+        }
+        return Collections.emptySet();
     }
 
     public PartiesAPI getPartiesApi() {
@@ -226,7 +236,6 @@ public class Dependencies implements IDependencies {
             } catch (final Exception e) {
                 e.printStackTrace();
             }
-
         }
         return false;
     }
@@ -238,7 +247,7 @@ public class Dependencies implements IDependencies {
             if (rsp != null) {
                 economy = rsp.getProvider();
             }
-            return (economy != null);
+            return economy != null;
         } catch (final Exception e) {
             return false;
         }
@@ -250,7 +259,7 @@ public class Dependencies implements IDependencies {
         if (rsp != null) {
             permission = rsp.getProvider();
         }
-        return (permission != null);
+        return permission != null;
     }
 
     private boolean setupParty() {
@@ -265,19 +274,65 @@ public class Dependencies implements IDependencies {
                 }
             }
         }
-        return (partyProvider != null);
+        return partyProvider != null;
     }
     
-    public boolean runDenizenScript(final String scriptName, final IQuester quester) {
-        return plugin.getDenizenTrigger().runDenizenScript(scriptName, quester);
-    }
-    
-    public Location getNPCLocation(final int id) {
-        return citizens.getNPCRegistry().getById(id).getStoredLocation();
+    public boolean runDenizenScript(final String scriptName, final IQuester quester, final UUID uuid) {
+        return plugin.getDenizenTrigger().runDenizenScript(scriptName, quester, uuid);
     }
 
-    public String getNPCName(final int id) {
-        return citizens.getNPCRegistry().getById(id).getName();
+    public @Nullable Location getNPCLocation(final UUID uuid) {
+        if (citizens != null && citizens.getNPCRegistry().getByUniqueId(uuid) != null) {
+            return citizens.getNPCRegistry().getByUniqueId(uuid).getStoredLocation();
+        } else if (getZnpcsUuids().contains(uuid)) {
+            final Optional<NPC> opt = NPC.all().stream().filter(npc1 -> npc1.getUUID().equals(uuid)).findAny();
+            if (opt.isPresent()) {
+                return opt.get().getLocation();
+            }
+        }
+        return null;
+    }
+
+    public @Nullable Entity getNPCEntity(final UUID uuid) {
+        if (citizens != null && citizens.getNPCRegistry().getByUniqueId(uuid) != null) {
+            return citizens.getNPCRegistry().getByUniqueId(uuid).getEntity();
+        } else if (getZnpcsUuids().contains(uuid)) {
+            final Optional<NPC> opt = NPC.all().stream().filter(npc1 -> npc1.getUUID().equals(uuid)).findAny();
+            if (opt.isPresent()) {
+                return (Entity) opt.get().getBukkitEntity();
+            }
+        }
+        return null;
+    }
+
+    public @NotNull String getNPCName(final UUID uuid) {
+        Entity npc = null;
+        if (citizens != null && citizens.getNPCRegistry().getByUniqueId(uuid) != null) {
+            return citizens.getNPCRegistry().getByUniqueId(uuid).getName();
+        } else if (getZnpcsUuids().contains(uuid)) {
+            final Optional<NPC> opt = NPC.all().stream().filter(npc1 -> npc1.getUUID().equals(uuid)).findAny();
+            if (opt.isPresent()) {
+                npc = (Entity) opt.get().getBukkitEntity();
+                if (npc.getCustomName() != null) {
+                    return npc.getCustomName();
+                } else {
+                    return opt.get().getNpcPojo().getHologramLines().get(0);
+                }
+            }
+        }
+        return "NPC";
+    }
+
+    public @Nullable UUID getUUIDFromNPC(final Entity entity) {
+        if (citizens != null && citizens.getNPCRegistry().isNPC(entity)) {
+            return citizens.getNPCRegistry().getNPC(entity).getUniqueId();
+        } else if (getZnpcsUuids().contains(entity.getUniqueId())) {
+            final Optional<NPC> opt = NPC.all().stream().filter(npc1 -> npc1.getUUID().equals(entity.getUniqueId())).findAny();
+            if (opt.isPresent()) {
+                return opt.get().getUUID();
+            }
+        }
+        return null;
     }
     
     public int getMcmmoSkillLevel(final SkillType st, final String player) {
@@ -313,9 +368,8 @@ public class Dependencies implements IDependencies {
         getDenizenApi();
         getMcmmoClassic();
         getHeroes();
-        getPhatLoots();
         getPlaceholderApi();
-        getCitizensBooksApi();
+        getAstralBooksApi();
         getPartiesApi();
         getPartyProvider();
         getVaultEconomy();

@@ -13,7 +13,6 @@
 package me.blackvein.quests;
 
 import me.blackvein.quests.config.ISettings;
-import me.blackvein.quests.util.Lang;
 import org.bukkit.configuration.file.FileConfiguration;
 
 import java.io.File;
@@ -27,7 +26,6 @@ public class Settings implements ISettings {
     private boolean allowCommands = true;
     private boolean allowCommandsForNpcQuests = false;
     private boolean allowPranks = true;
-    private boolean askConfirmation = true;
     private boolean clickablePrompts = true;
     private int conditionInterval = 7;
     private boolean confirmAbandon = true;
@@ -38,10 +36,13 @@ public class Settings implements ISettings {
     private boolean giveJournalItem = false;
     private boolean ignoreLockedQuests = false;
     private int killDelay = 0;
+    private String language = "en-US";
+    private boolean languageOverrideClient;
     private int maxQuests = 0;
     private boolean npcEffects = true;
     private String effect = "note";
     private String redoEffect = "angry_villager";
+    private boolean showCompletedObjs = true;
     private boolean showQuestReqs = true;
     private boolean showQuestTitles = true;
     private int strictPlayerMovement = 0;
@@ -79,19 +80,6 @@ public class Settings implements ISettings {
     public void setAllowPranks(final boolean allowPranks) {
         this.allowPranks = allowPranks;
     }
-    /**
-     * @deprecated Use {@link #canConfirmAccept()}
-     */
-    public boolean canAskConfirmation() {
-        return askConfirmation;
-    }
-    /**
-     * @deprecated Use {@link #setConfirmAccept(boolean)}
-     */
-    public void setAskConfirmation(final boolean askConfirmation) {
-        this.askConfirmation = askConfirmation;
-        this.confirmAccept = askConfirmation;
-    }
     public boolean canClickablePrompts() {
         return clickablePrompts;
     }
@@ -114,7 +102,6 @@ public class Settings implements ISettings {
         return confirmAccept;
     }
     public void setConfirmAccept(final boolean confirmAccept) {
-        this.askConfirmation = confirmAccept;
         this.confirmAccept = confirmAccept;
     }
     public int getConsoleLogging() {
@@ -153,6 +140,18 @@ public class Settings implements ISettings {
     public void setKillDelay(final int killDelay) {
         this.killDelay = killDelay;
     }
+    public String getLanguage() {
+        return language;
+    }
+    public void setLanguage(final String language) {
+        this.language = language;
+    }
+    public boolean canLanguageOverrideClient() {
+        return languageOverrideClient;
+    }
+    public void setLanguageOverrideClient(final boolean languageOverrideClient) {
+        this.languageOverrideClient = languageOverrideClient;
+    }
     public int getMaxQuests() {
         return maxQuests;
     }
@@ -176,6 +175,12 @@ public class Settings implements ISettings {
     }
     public void setRedoEffect(final String redoEffect) {
         this.redoEffect = redoEffect;
+    }
+    public boolean canShowCompletedObjs() {
+        return showCompletedObjs;
+    }
+    public void setShowCompletedObjs(final boolean showCompletedObjs) {
+        this.showCompletedObjs = showCompletedObjs;
     }
     public boolean canShowQuestReqs() {
         return showQuestReqs;
@@ -232,7 +237,6 @@ public class Settings implements ISettings {
         allowCommands = config.getBoolean("allow-command-questing", true);
         allowCommandsForNpcQuests = config.getBoolean("allow-command-quests-with-npcs", false);
         allowPranks = config.getBoolean("allow-pranks", true);
-        askConfirmation = config.getBoolean("confirm-accept", true);
         clickablePrompts = config.getBoolean("clickable-prompts", true);
         conditionInterval = config.getInt("condition-interval", 8);
         confirmAbandon = config.getBoolean("confirm-abandon", true);
@@ -244,18 +248,21 @@ public class Settings implements ISettings {
         consoleLogging = config.getInt("console-logging", 1);
         disableCommandFeedback = config.getBoolean("disable-command-feedback", true);
         genFilesOnJoin = config.getBoolean("generate-files-on-join", true);
+        giveJournalItem = config.getBoolean("give-journal-item", false);
         ignoreLockedQuests = config.getBoolean("ignore-locked-quests", false);
         killDelay = config.getInt("kill-delay", 600);
         if (Objects.requireNonNull(config.getString("language")).equalsIgnoreCase("en")) {
             //Legacy
-            Lang.setISO("en-US");
+            language = "en-US";
         } else {
-            Lang.setISO(config.getString("language", "en-US"));
+            language = config.getString("language", "en-US");
         }
+        languageOverrideClient = config.getBoolean("language-override-client", false);
         maxQuests = config.getInt("max-quests", maxQuests);
         npcEffects = config.getBoolean("npc-effects.enabled", true);
         effect = config.getString("npc-effects.new-quest", "note");
         redoEffect = config.getString("npc-effects.redo-quest", "angry_villager");
+        showCompletedObjs = config.getBoolean("show-completed-objectives", true);
         showQuestReqs = config.getBoolean("show-requirements", true);
         showQuestTitles = config.getBoolean("show-titles", true);
         strictPlayerMovement = config.getInt("strict-player-movement", 0);

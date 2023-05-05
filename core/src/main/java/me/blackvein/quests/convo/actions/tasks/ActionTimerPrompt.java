@@ -12,10 +12,6 @@
 
 package me.blackvein.quests.convo.actions.tasks;
 
-import org.bukkit.ChatColor;
-import org.bukkit.conversations.ConversationContext;
-import org.bukkit.conversations.Prompt;
-
 import me.blackvein.quests.Quests;
 import me.blackvein.quests.convo.actions.ActionsEditorNumericPrompt;
 import me.blackvein.quests.convo.actions.ActionsEditorStringPrompt;
@@ -25,13 +21,16 @@ import me.blackvein.quests.events.editor.actions.ActionsEditorPostOpenStringProm
 import me.blackvein.quests.util.CK;
 import me.blackvein.quests.util.Lang;
 import me.blackvein.quests.util.MiscUtil;
+import org.bukkit.ChatColor;
+import org.bukkit.conversations.ConversationContext;
+import org.bukkit.conversations.Prompt;
 import org.jetbrains.annotations.NotNull;
 
-public class TimerPrompt extends ActionsEditorNumericPrompt {
+public class ActionTimerPrompt extends ActionsEditorNumericPrompt {
     
     private final Quests plugin;
     
-    public TimerPrompt(final ConversationContext context) {
+    public ActionTimerPrompt(final ConversationContext context) {
         super(context);
         this.plugin = (Quests)context.getPlugin();
     }
@@ -89,8 +88,13 @@ public class TimerPrompt extends ActionsEditorNumericPrompt {
                 }
             }
         case 2:
-            return ChatColor.GRAY + "(" + ChatColor.AQUA + context.getSessionData(CK.E_CANCEL_TIMER) + ChatColor.GRAY
-                    + ")";
+            if (context.getSessionData(CK.E_CANCEL_TIMER) == null) {
+                return ChatColor.GRAY + "(" + ChatColor.RED + Lang.get("false") + ChatColor.GRAY + ")";
+            } else {
+                final Boolean timerOpt = (Boolean) context.getSessionData(CK.E_CANCEL_TIMER);
+                return ChatColor.GRAY + "(" + (Boolean.TRUE.equals(timerOpt) ? ChatColor.GREEN + Lang.get("true")
+                        : ChatColor.RED + Lang.get("false")) + ChatColor.GRAY + ")";
+            }
         case 3:
             return "";
         default:
@@ -101,7 +105,7 @@ public class TimerPrompt extends ActionsEditorNumericPrompt {
     @Override
     public @NotNull String getBasicPromptText(final ConversationContext context) {
         if (context.getSessionData(CK.E_CANCEL_TIMER) == null) {
-            context.setSessionData(CK.E_CANCEL_TIMER, Lang.get("noWord"));
+            context.setSessionData(CK.E_CANCEL_TIMER, false);
         }
         
         final ActionsEditorPostOpenNumericPromptEvent event
@@ -121,25 +125,25 @@ public class TimerPrompt extends ActionsEditorNumericPrompt {
     protected Prompt acceptValidatedInput(final @NotNull ConversationContext context, final Number input) {
         switch (input.intValue()) {
         case 1:
-            return new TimerFailPrompt(context);
+            return new ActionTimerFailPrompt(context);
         case 2:
-            final String s = (String) context.getSessionData(CK.E_CANCEL_TIMER);
-            if (s != null && s.equalsIgnoreCase(Lang.get("yesWord"))) {
-                context.setSessionData(CK.E_CANCEL_TIMER, Lang.get("noWord"));
+            final Boolean b = (Boolean) context.getSessionData(CK.E_CANCEL_TIMER);
+            if (Boolean.TRUE.equals(b)) {
+                context.setSessionData(CK.E_CANCEL_TIMER, false);
             } else {
-                context.setSessionData(CK.E_CANCEL_TIMER, Lang.get("yesWord"));
+                context.setSessionData(CK.E_CANCEL_TIMER, true);
             }
-            return new TimerPrompt(context);
+            return new ActionTimerPrompt(context);
         case 3:
             return new ActionMainPrompt(context);
         default:
-            return new TimerPrompt(context);
+            return new ActionTimerPrompt(context);
         }
     }
     
-    public class TimerFailPrompt extends ActionsEditorStringPrompt {
+    public class ActionTimerFailPrompt extends ActionsEditorStringPrompt {
         
-        public TimerFailPrompt(final ConversationContext context) {
+        public ActionTimerFailPrompt(final ConversationContext context) {
             super(context);
         }
         
@@ -174,9 +178,9 @@ public class TimerPrompt extends ActionsEditorNumericPrompt {
             } catch (final NumberFormatException e) {
                 context.getForWhom().sendRawMessage(ChatColor.RED
                         + Lang.get("reqNotANumber").replace("<input>", input));
-                return new TimerFailPrompt(context);
+                return new ActionTimerFailPrompt(context);
             }
-            return new TimerPrompt(context);
+            return new ActionTimerPrompt(context);
         }
     }
 }

@@ -13,11 +13,11 @@
 package me.blackvein.quests.dependencies;
 
 import com.alessiodp.parties.api.interfaces.PartiesAPI;
-import com.codisimus.plugins.phatloots.PhatLoots;
 import com.gmail.nossr50.datatypes.skills.SkillType;
 import com.gmail.nossr50.mcMMO;
 import com.herocraftonline.heroes.Heroes;
 import com.herocraftonline.heroes.characters.Hero;
+import io.github.znetworkw.znpcservers.ServersNPC;
 import me.blackvein.quests.player.IQuester;
 import me.blackvein.quests.reflect.denizen.DenizenAPI;
 import me.blackvein.quests.reflect.worldguard.WorldGuardAPI;
@@ -27,7 +27,7 @@ import net.citizensnpcs.api.CitizensPlugin;
 import net.milkbowl.vault.economy.Economy;
 import net.milkbowl.vault.permission.Permission;
 import org.bukkit.Location;
-import ro.nicuch.citizensbooks.CitizensBooksAPI;
+import ro.niconeko.astralbooks.api.AstralBooksAPI;
 
 import java.util.Set;
 import java.util.UUID;
@@ -47,8 +47,6 @@ public interface IDependencies {
 
     Heroes getHeroes();
 
-    PhatLoots getPhatLoots();
-
     PlaceholderAPIPlugin getPlaceholderApi();
 
     CitizensPlugin getCitizens();
@@ -59,17 +57,19 @@ public interface IDependencies {
 
     DenizenAPI getDenizenApi();
 
-    CitizensBooksAPI getCitizensBooksApi();
+    AstralBooksAPI getAstralBooksApi();
+
+    ServersNPC getZnpcs();
 
     PartiesAPI getPartiesApi();
 
     boolean isPluginAvailable(final String pluginName);
 
-    boolean runDenizenScript(final String scriptName, final IQuester quester);
+    boolean runDenizenScript(final String scriptName, final IQuester quester, final UUID uuid);
 
-    Location getNPCLocation(final int id);
+    Location getNPCLocation(final UUID uuid);
 
-    String getNPCName(final int id);
+    String getNPCName(final UUID uuid);
 
     int getMcmmoSkillLevel(final SkillType st, final String player);
 

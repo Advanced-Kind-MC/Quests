@@ -14,15 +14,12 @@ package me.blackvein.quests;
 
 import com.alessiodp.parties.api.interfaces.Party;
 import com.alessiodp.parties.api.interfaces.PartyPlayer;
-import com.codisimus.plugins.phatloots.PhatLootsAPI;
-import com.codisimus.plugins.phatloots.loot.CommandLoot;
-import com.codisimus.plugins.phatloots.loot.LootBundle;
 import com.gmail.nossr50.datatypes.skills.SkillType;
 import com.gmail.nossr50.util.player.UserManager;
 import com.herocraftonline.heroes.characters.Hero;
-import me.blackvein.quests.actions.IAction;
+import io.github.znetworkw.znpcservers.npc.NPC;
 import me.blackvein.quests.actions.Action;
-import me.blackvein.quests.conditions.ICondition;
+import me.blackvein.quests.actions.IAction;
 import me.blackvein.quests.dependencies.IDependencies;
 import me.blackvein.quests.events.quest.QuestUpdateCompassEvent;
 import me.blackvein.quests.events.quester.QuesterPostChangeStageEvent;
@@ -50,8 +47,6 @@ import me.blackvein.quests.util.Lang;
 import me.blackvein.quests.util.MiscUtil;
 import me.blackvein.quests.util.RomanNumeral;
 import me.clip.placeholderapi.PlaceholderAPI;
-import net.citizensnpcs.api.CitizensAPI;
-import net.citizensnpcs.api.npc.NPC;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.DyeColor;
@@ -66,14 +61,18 @@ import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.Plugin;
 
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 public class Quest implements IQuest {
 
@@ -189,16 +188,18 @@ public class Quest implements IQuest {
     }
 
     @Override
-    public NPC getNpcStart() {
-        if (CitizensAPI.getNPCRegistry().getByUniqueId(npcStart) != null) {
-            return CitizensAPI.getNPCRegistry().getByUniqueId(npcStart);
-        }
-        return null;
+    public UUID getNpcStart() {
+        return npcStart;
     }
 
     @Override
-    public void setNpcStart(final NPC npcStart) {
-        this.npcStart = npcStart.getUniqueId();
+    public void setNpcStart(final UUID npcStart) {
+        this.npcStart = npcStart;
+    }
+
+    @Override
+    public String getNpcStartName() {
+        return plugin.getDependencies().getNPCName(getNpcStart());
     }
 
     @Override
@@ -270,7 +271,7 @@ public class Quest implements IQuest {
             }
             if (quester.getCurrentQuestsTemp().get(this) == (orderedStages.size() - 1)) {
                 if (currentStage.getScript() != null) {
-                    plugin.getDenizenTrigger().runDenizenScript(currentStage.getScript(), quester);
+                    plugin.getDenizenTrigger().runDenizenScript(currentStage.getScript(), quester, null);
                 }
                 completeQuest(quester);
             } else {
@@ -327,7 +328,7 @@ public class Quest implements IQuest {
         quester.hardStagePut(this, stage);
         quester.addEmptiesFor(this, stage);
         if (currentStage.getScript() != null) {
-            plugin.getDenizenTrigger().runDenizenScript(currentStage.getScript(), quester);
+            plugin.getDenizenTrigger().runDenizenScript(currentStage.getScript(), quester, null);
         }
         if (nextStage.getStartAction() != null) {
             nextStage.getStartAction().fire(quester, this);
@@ -337,7 +338,7 @@ public class Quest implements IQuest {
             final Player p = quester.getPlayer();
             final String title = Lang.get(p, "objectives").replace("<quest>", name);
             quester.sendMessage(ChatColor.GOLD + title);
-            plugin.showObjectives(this, quester, false);
+            quester.showCurrentObjectives(this, quester, false);
             if (quester.getCurrentStage(this) == null) {
                 quester.sendMessage(ChatColor.RED + "itemCreateCriticalError");
                 plugin.getLogger().severe("Could not set stage for quest ID " + getId()
@@ -348,72 +349,7 @@ public class Quest implements IQuest {
             if (stageStartMessage != null) {
                 p.sendMessage(ConfigUtil.parseStringWithPossibleLineBreaks(stageStartMessage, this, p));
             }
-            final ICondition c = nextStage.getCondition();
-            if (c != null && nextStage.getObjectiveOverrides().isEmpty()) {
-                p.sendMessage(ChatColor.LIGHT_PURPLE + Lang.get("stageEditorConditions"));
-                if (!c.getEntitiesWhileRiding().isEmpty()) {
-                    final StringBuilder msg = new StringBuilder("- " + Lang.get("conditionEditorRideEntity"));
-                    for (final String e : c.getEntitiesWhileRiding()) {
-                        msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(e);
-                    }
-                    p.sendMessage(ChatColor.YELLOW + msg.toString());
-                } else if (!c.getNpcsWhileRiding().isEmpty()) {
-                    final StringBuilder msg = new StringBuilder("- " + Lang.get("conditionEditorRideNPC"));
-                    for (final int i : c.getNpcsWhileRiding()) {
-                        if (plugin.getDependencies().getCitizens() != null) {
-                            msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(CitizensAPI.getNPCRegistry()
-                                    .getById(i).getName());
-                        } else {
-                            msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(i);
-                        }
-                    }
-                    p.sendMessage(ChatColor.YELLOW + msg.toString());
-                } else if (!c.getPermissions().isEmpty()) {
-                    final StringBuilder msg = new StringBuilder("- " + Lang.get("conditionEditorPermissions"));
-                    for (final String e : c.getPermissions()) {
-                        msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(e);
-                    }
-                    p.sendMessage(ChatColor.YELLOW + msg.toString());
-                } else if (!c.getItemsWhileHoldingMainHand().isEmpty()) {
-                    final StringBuilder msg = new StringBuilder("- " + Lang.get("conditionEditorItemsInMainHand"));
-                    for (final ItemStack is : c.getItemsWhileHoldingMainHand()) {
-                        msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(ItemUtil.getPrettyItemName(is
-                                .getType().name()));
-                    }
-                    p.sendMessage(ChatColor.YELLOW + msg.toString());
-                } else if (!c.getWorldsWhileStayingWithin().isEmpty()) {
-                    final StringBuilder msg = new StringBuilder("- " + Lang.get("conditionEditorStayWithinWorld"));
-                    for (final String w : c.getWorldsWhileStayingWithin()) {
-                        msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(w);
-                    }
-                    p.sendMessage(ChatColor.YELLOW + msg.toString());
-                } else if (!c.getBiomesWhileStayingWithin().isEmpty()) {
-                    final StringBuilder msg = new StringBuilder("- " + Lang.get("conditionEditorStayWithinBiome"));
-                    for (final String b : c.getBiomesWhileStayingWithin()) {
-                        msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(MiscUtil
-                                .snakeCaseToUpperCamelCase(b));
-                    }
-                    p.sendMessage(ChatColor.YELLOW + msg.toString());
-                } else if (!c.getRegionsWhileStayingWithin().isEmpty()) {
-                    final StringBuilder msg = new StringBuilder("- " + Lang.get("conditionEditorStayWithinRegion"));
-                    for (final String r : c.getRegionsWhileStayingWithin()) {
-                        msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(r);
-                    }
-                    p.sendMessage(ChatColor.YELLOW + msg.toString());
-                } else if (!c.getPlaceholdersCheckIdentifier().isEmpty()) {
-                    final StringBuilder msg = new StringBuilder("- " + Lang.get("conditionEditorCheckPlaceholder"));
-                    int index = 0;
-                    for (final String r : c.getPlaceholdersCheckIdentifier()) {
-                        if (c.getPlaceholdersCheckValue().size() > index) {
-                            msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(r).append(ChatColor.GRAY)
-                                    .append(" = ").append(ChatColor.AQUA).append(c.getPlaceholdersCheckValue()
-                                            .get(index));
-                        }
-                        index++;
-                    }
-                    p.sendMessage(ChatColor.YELLOW + msg.toString());
-                }
-            }
+            plugin.showConditions(this, quester);
         }
         quester.updateJournal();
         quester.saveData();
@@ -449,16 +385,26 @@ public class Quest implements IQuest {
         final IQuest quest = this;
         Bukkit.getScheduler().runTask(plugin, () -> {
             Location targetLocation = null;
-            if (stage.getCitizensToInteract() != null && stage.getCitizensToInteract().size() > 0) {
-                targetLocation = plugin.getDependencies().getNPCLocation(stage.getCitizensToInteract().getFirst());
-            } else if (stage.getCitizensToKill() != null && stage.getCitizensToKill().size() > 0) {
-                targetLocation = plugin.getDependencies().getNPCLocation(stage.getCitizensToKill().getFirst());
+            if (stage.getNpcsToInteract() != null && stage.getNpcsToInteract().size() > 0) {
+                targetLocation = plugin.getDependencies().getNPCLocation(stage.getNpcsToInteract().getFirst());
+            } else if (stage.getNpcsToKill() != null && stage.getNpcsToKill().size() > 0) {
+                targetLocation = plugin.getDependencies().getNPCLocation(stage.getNpcsToKill().getFirst());
             } else if (stage.getLocationsToReach() != null && stage.getLocationsToReach().size() > 0) {
                 targetLocation = stage.getLocationsToReach().getFirst();
             } else if (stage.getItemDeliveryTargets() != null && stage.getItemDeliveryTargets().size() > 0) {
-                final NPC npc = plugin.getDependencies().getCitizens().getNPCRegistry().getById(stage
-                        .getItemDeliveryTargets().getFirst());
-                targetLocation = npc.getStoredLocation();
+                final UUID uuid = stage.getItemDeliveryTargets().getFirst();
+                if (plugin.getDependencies().getCitizens() != null
+                        && plugin.getDependencies().getCitizens().getNPCRegistry().getByUniqueId(uuid) != null) {
+                    targetLocation = plugin.getDependencies().getCitizens().getNPCRegistry().getByUniqueId(uuid)
+                            .getStoredLocation();
+                }
+                if (plugin.getDependencies().getZnpcs() != null
+                        && plugin.getDependencies().getZnpcsUuids().contains(uuid)) {
+                    final Optional<NPC> opt = NPC.all().stream().filter(npc1 -> npc1.getUUID().equals(uuid)).findAny();
+                    if (opt.isPresent()) {
+                        targetLocation = opt.get().getLocation();
+                    }
+                }
             } else if (stage.getPlayersToKill() != null && stage.getPlayersToKill() > 0) {
                 if (quester.getPlayer() == null) {
                     return;
@@ -578,11 +524,47 @@ public class Quest implements IQuest {
         });
         return true;
     }
+
+    /**
+     * Format GUI display item with applicable display name, lore, and item flags
+     *
+     * @param quester The quester to prepare for
+     * @return formatted item
+     */
+    public ItemStack prepareDisplay(final Quester quester) {
+        final ItemStack display = getGUIDisplay().clone();
+        final ItemMeta meta = display.getItemMeta();
+        if (meta != null) {
+            final Player player = quester.getPlayer();
+            if (quester.getCompletedQuests().contains(this)) {
+                meta.setDisplayName(ChatColor.DARK_PURPLE + ConfigUtil.parseString(getName()
+                        + " " + ChatColor.GREEN + Lang.get(player, "redoCompleted"), getNpcStart()));
+            } else {
+                meta.setDisplayName(ChatColor.DARK_PURPLE + ConfigUtil.parseString(getName(), getNpcStart()));
+            }
+            if (!meta.hasLore()) {
+                final LinkedList<String> lines;
+                String desc = getDescription();
+                if (plugin.getDependencies().getPlaceholderApi() != null) {
+                    desc = PlaceholderAPI.setPlaceholders(player, desc);
+                }
+                if (desc.equals(ChatColor.stripColor(desc))) {
+                    lines = MiscUtil.makeLines(desc, " ", 40, ChatColor.DARK_GREEN);
+                } else {
+                    lines = MiscUtil.makeLines(desc, " ", 40, null);
+                }
+                meta.setLore(lines);
+            }
+            meta.addItemFlags(ItemFlag.values());
+            display.setItemMeta(meta);
+        }
+        return display;
+    }
     
     /**
      * Check that a quester has met all Requirements to accept this quest<p>
      * 
-     * Item, permission and custom Requirements are only checked for online players
+     * Item, experience, permission and custom Requirements are only checked for online players
      * 
      * @param quester The quester to check
      * @return true if all Requirements have been met
@@ -594,7 +576,7 @@ public class Quest implements IQuest {
     /**
      * Check that a player has met all Requirements to accept this quest<p>
      * 
-     * Item, permission and custom Requirements are only checked for online players
+     * Item, experience, permission and custom Requirements are only checked for online players
      * 
      * @param player The player to check
      * @return true if all Requirements have been met
@@ -609,12 +591,22 @@ public class Quest implements IQuest {
         if (quester.getQuestPoints() < requirements.getQuestPoints()) {
             return false;
         }
-        if (!quester.getCompletedQuestsTemp().containsAll(requirements.getNeededQuests())) {
+        final Set<String> completed = quester.getCompletedQuestsTemp().stream().map(IQuest::getId)
+                .collect(Collectors.toSet());
+        if (!requirements.getNeededQuestIds().isEmpty()
+                && !completed.containsAll(requirements.getNeededQuestIds())) {
             return false;
         }
-        for (final IQuest q : requirements.getBlockQuests()) {
-            if (quester.getCompletedQuestsTemp().contains(q) || quester.getCurrentQuestsTemp().containsKey(q)) {
-                return false;
+        if (!requirements.getBlockQuestIds().isEmpty()) {
+            for (final String questId : requirements.getBlockQuestIds()) {
+                if (completed.contains(questId)) {
+                    return false;
+                }
+            }
+            for (final IQuest q : quester.getCurrentQuestsTemp().keySet()) {
+                if (!requirements.getBlockQuestIds().contains(q.getId())) {
+                    return false;
+                }
             }
         }
         for (final String s : requirements.getMcmmoSkills()) {
@@ -637,6 +629,9 @@ public class Quest implements IQuest {
         }
         if (player.isOnline()) {
             final Player p = (Player)player;
+            if (p.getTotalExperience() < requirements.getExp()) {
+                return false;
+            }
             final Inventory fakeInv = Bukkit.createInventory(null, InventoryType.PLAYER);
             fakeInv.setContents(p.getInventory().getContents().clone());
             for (final ItemStack is : requirements.getItems()) {
@@ -840,50 +835,6 @@ public class Quest implements IQuest {
                 }
             }
         }
-        final LinkedList<ItemStack> phatLootItems = new LinkedList<>();
-        int phatLootExp = 0;
-        final LinkedList<String> phatLootMessages = new LinkedList<>();
-        for (final String s : rewards.getPhatLoots()) {
-            final LootBundle lb = PhatLootsAPI.getPhatLoot(s).rollForLoot();
-            if (lb.getExp() > 0) {
-                phatLootExp += lb.getExp();
-                if (player.isOnline()) {
-                    ((Player)player).giveExp(lb.getExp());
-                }
-            }
-            if (lb.getMoney() > 0) {
-                if (depends.getVaultEconomy() != null) {
-                    depends.getVaultEconomy().depositPlayer(player, lb.getMoney());
-                }
-            }
-            if (!lb.getItemList().isEmpty()) {
-                phatLootItems.addAll(lb.getItemList());
-                if (player.isOnline()) {
-                    for (final ItemStack is : lb.getItemList()) {
-                        try {
-                            InventoryUtil.addItem(player.getPlayer(), is);
-                        } catch (final Exception e) {
-                            plugin.getLogger().severe("Unable to add PhatLoots item to inventory of "
-                                    + player.getName() + " upon completion of quest " + name);
-                            quester.sendMessage(ChatColor.RED + "Quests encountered a problem with an item. "
-                                    + "Please contact an administrator.");
-                        }
-                    }
-                }
-            }
-            if (!lb.getCommandList().isEmpty() && player.isOnline()) {
-                for (final CommandLoot cl : lb.getCommandList()) {
-                    cl.execute((Player)player);
-                }
-            }
-            if (!lb.getMessageList().isEmpty()) {
-                phatLootMessages.addAll(lb.getMessageList());
-            }
-            if (plugin.getSettings().getConsoleLogging() > 2) {
-                plugin.getLogger().info(player.getUniqueId() + " was rewarded loot " + s);
-            }
-            issuedReward = true;
-        }
         if (rewards.getExp() > 0 && player.isOnline()) {
             ((Player)player).giveExp(rewards.getExp());
             if (plugin.getSettings().getConsoleLogging() > 2) {
@@ -1000,45 +951,9 @@ public class Quest implements IQuest {
                         quester.sendMessage(text.toString().replace("<item>", ItemUtil.getName(i)));
                     }
                 }
-                for (final ItemStack i : phatLootItems) {
-                    if (i.getItemMeta() != null && i.getItemMeta().hasDisplayName()) {
-                        if (i.getEnchantments().isEmpty()) {
-                            quester.sendMessage("- " + ChatColor.DARK_AQUA + ChatColor.ITALIC
-                                    + i.getItemMeta().getDisplayName() + ChatColor.RESET + ChatColor.GRAY + " x "
-                                    + i.getAmount());
-                        } else {
-                            quester.sendMessage("- " + ChatColor.DARK_AQUA + ChatColor.ITALIC
-                                    + i.getItemMeta().getDisplayName() + ChatColor.RESET + ChatColor.GRAY + " x "
-                                    + i.getAmount() + ChatColor.DARK_PURPLE + " " + Lang.get(p, "enchantedItem"));
-                        }
-                    } else if (i.getDurability() != 0) {
-                        if (i.getEnchantments().isEmpty()) {
-                            quester.sendMessage("- " + ChatColor.DARK_GREEN + ItemUtil.getName(i) + ":"
-                                    + i.getDurability() + ChatColor.GRAY + " x " + i.getAmount());
-                        } else {
-                            quester.sendMessage("- " + ChatColor.DARK_GREEN + ItemUtil.getName(i) + ":"
-                                    + i.getDurability() + ChatColor.GRAY + " x " + i.getAmount()
-                                    + ChatColor.DARK_PURPLE + " " + Lang.get(p, "enchantedItem"));
-                        }
-                    } else {
-                        if (i.getEnchantments().isEmpty()) {
-                            quester.sendMessage("- " + ChatColor.DARK_GREEN + ItemUtil.getName(i) + ChatColor.GRAY
-                                    + " x " + i.getAmount());
-                        } else {
-                            quester.sendMessage("- " + ChatColor.DARK_GREEN + ItemUtil.getName(i) + ChatColor.GRAY
-                                    + " x " + i.getAmount() + ChatColor.DARK_PURPLE + " "
-                                    + Lang.get(p, "enchantedItem"));
-                        }
-                    }
-                }
                 if (rewards.getMoney() > 0 && depends.getVaultEconomy() != null) {
                     quester.sendMessage("- " + ChatColor.DARK_GREEN
                             + depends.getVaultEconomy().format(rewards.getMoney()));
-                }
-                if (rewards.getExp() > 0 || phatLootExp > 0) {
-                    final int tot = rewards.getExp() + phatLootExp;
-                    quester.sendMessage("- " + ChatColor.DARK_GREEN + tot + ChatColor.DARK_PURPLE + " "
-                            + Lang.get(p, "experience"));
                 }
                 if (!rewards.getCommands().isEmpty()) {
                     int index = 0;
@@ -1085,11 +1000,6 @@ public class Quest implements IQuest {
                 if (rewards.getPartiesExperience() > 0) {
                     p.sendMessage("- " + ChatColor.DARK_GREEN + rewards.getPartiesExperience() + ChatColor.DARK_PURPLE
                             + " " + Lang.get(p, "partiesExperience"));
-                }
-                if (!phatLootMessages.isEmpty()) {
-                    for (final String s : phatLootMessages) {
-                        quester.sendMessage("- " + s);
-                    }
                 }
                 for (final String s : rewards.getCustomRewards().keySet()) {
                     CustomReward found = null;
@@ -1173,8 +1083,7 @@ public class Quest implements IQuest {
             }
         }
         final String[] messages = {
-                ChatColor.GOLD + Lang.get(player, "questCommandTitle").replace("<quest>", name),
-                ChatColor.RED + Lang.get(player, "questFailed")
+                ChatColor.RED + Lang.get(player, "questFailed").replace("<quest>", name)
         };
         quester.quitQuest(this, messages);
         if (player.isOnline()) {

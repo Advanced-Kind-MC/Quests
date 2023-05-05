@@ -12,6 +12,7 @@
 
 package me.blackvein.quests.commands.questadmin.subcommands;
 
+import me.blackvein.quests.Quester;
 import me.blackvein.quests.Quests;
 import me.blackvein.quests.commands.QuestsSubCommand;
 import me.blackvein.quests.player.IQuester;
@@ -68,6 +69,10 @@ public class QuestadminQuitCommand extends QuestsSubCommand {
 
     @Override
     public void execute(CommandSender cs, String[] args) {
+        if (args.length == 1) {
+            // Shows command usage
+            return;
+        }
         if (cs.hasPermission("quests.admin.*") || cs.hasPermission("quests.admin.quit")) {
             OfflinePlayer target = getOfflinePlayer(args[1]);
             if (target == null) {
@@ -109,9 +114,21 @@ public class QuestadminQuitCommand extends QuestsSubCommand {
             return null; // Shows online players
         } else if (args.length == 3) {
             final List<String> results = new ArrayList<>();
-            for (final IQuest quest : plugin.getLoadedQuests()) {
-                if (quest.getName().toLowerCase().startsWith(args[2].toLowerCase())) {
-                    results.add(ChatColor.stripColor(quest.getName()));
+            final Player player = Bukkit.getPlayer(args[1]);
+            if (player != null) {
+                final Quester quester = plugin.getQuester(player.getUniqueId());
+                if (quester != null) {
+                    for (final IQuest quest : quester.getCurrentQuests().keySet()) {
+                        if (quest.getName().toLowerCase().startsWith(args[2].toLowerCase())) {
+                            results.add(ChatColor.stripColor(quest.getName()));
+                        }
+                    }
+                }
+            } else {
+                for (final IQuest quest : plugin.getLoadedQuests()) {
+                    if (quest.getName().toLowerCase().startsWith(args[2].toLowerCase())) {
+                        results.add(ChatColor.stripColor(quest.getName()));
+                    }
                 }
             }
             return results;

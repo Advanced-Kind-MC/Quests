@@ -20,10 +20,10 @@ import me.blackvein.quests.convo.QuestsNumericPrompt;
 import me.blackvein.quests.convo.generic.OverridePrompt;
 import me.blackvein.quests.convo.quests.QuestsEditorNumericPrompt;
 import me.blackvein.quests.convo.quests.QuestsEditorStringPrompt;
-import me.blackvein.quests.convo.quests.objectives.BlocksPrompt;
-import me.blackvein.quests.convo.quests.objectives.ItemsPrompt;
-import me.blackvein.quests.convo.quests.objectives.MobsPrompt;
-import me.blackvein.quests.convo.quests.objectives.NpcsPrompt;
+import me.blackvein.quests.convo.quests.objectives.QuestBlocksPrompt;
+import me.blackvein.quests.convo.quests.objectives.QuestItemsPrompt;
+import me.blackvein.quests.convo.quests.objectives.QuestMobsPrompt;
+import me.blackvein.quests.convo.quests.objectives.QuestNpcsPrompt;
 import me.blackvein.quests.events.editor.quests.QuestsEditorPostOpenNumericPromptEvent;
 import me.blackvein.quests.events.editor.quests.QuestsEditorPostOpenStringPromptEvent;
 import me.blackvein.quests.util.CK;
@@ -52,7 +52,7 @@ import java.util.TreeSet;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-public class StageMainPrompt extends QuestsEditorNumericPrompt {
+public class QuestStageMainPrompt extends QuestsEditorNumericPrompt {
     private final Quests plugin;
     private final int stageNum;
     private final String stagePrefix;
@@ -60,7 +60,7 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
     private boolean hasObjective = false;
     private final int size = 17;
 
-    public StageMainPrompt(final int stageNum, final ConversationContext context) {
+    public QuestStageMainPrompt(final int stageNum, final ConversationContext context) {
         super(context);
         this.plugin = (Quests)context.getPlugin();
         this.stageNum = stageNum;
@@ -452,16 +452,16 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
         context.setSessionData(stagePrefix, Boolean.TRUE);
         checkObjective(context);
 
-        if (context.getPlugin() != null) {
-            final QuestsEditorPostOpenNumericPromptEvent event
-                    = new QuestsEditorPostOpenNumericPromptEvent(context, this);
-            context.getPlugin().getServer().getPluginManager().callEvent(event);
-        }
+        final QuestsEditorPostOpenNumericPromptEvent event
+                = new QuestsEditorPostOpenNumericPromptEvent(context, this);
+        plugin.getServer().getPluginManager().callEvent(event);
         
         final StringBuilder text = new StringBuilder(ChatColor.LIGHT_PURPLE + "- " + ChatColor.AQUA
                 + getTitle(context).replaceFirst(" \\| ", ChatColor.LIGHT_PURPLE + " | ") + " -");
         for (int i = 1; i <= size; i++) {
-            text.append("\n").append(getNumberColor(context, i)).append(ChatColor.BOLD).append(i).append(ChatColor.RESET).append(" - ").append(getSelectionText(context, i)).append(" ").append(getAdditionalText(context, i));
+            text.append("\n").append(getNumberColor(context, i)).append(ChatColor.BOLD).append(i)
+                    .append(ChatColor.RESET).append(" - ").append(getSelectionText(context, i)).append(" ")
+                    .append(getAdditionalText(context, i));
         }
         return text.toString();
     }
@@ -470,62 +470,62 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
     protected Prompt acceptValidatedInput(final @NotNull ConversationContext context, final Number input) {
         switch (input.intValue()) {
         case 1:
-            return new BlocksPrompt(stageNum, context);
+            return new QuestBlocksPrompt(stageNum, context);
         case 2:
-            return new ItemsPrompt(stageNum, context);
+            return new QuestItemsPrompt(stageNum, context);
         case 3:
-            return new NpcsPrompt(stageNum, context);
+            return new QuestNpcsPrompt(stageNum, context);
         case 4:
-            return new MobsPrompt(stageNum, context);
+            return new QuestMobsPrompt(stageNum, context);
         case 5:
-            return new KillPlayerPrompt(context);
+            return new QuestKillPlayerPrompt(context);
         case 6:
-            return new ReachListPrompt(context);
+            return new QuestReachListPrompt(context);
         case 7:
-            return new PasswordListPrompt(context);
+            return new QuestPasswordListPrompt(context);
         case 8:
-            return new CustomObjectiveModulePrompt(context);
+            return new QuestCustomObjectiveModulePrompt(context);
         case 9:
             if (hasObjective) {
-                return new ActionListPrompt(context);
+                return new QuestActionListPrompt(context);
             } else {
                 context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("invalidOption"));
-                return new StageMainPrompt(stageNum, context);
+                return new QuestStageMainPrompt(stageNum, context);
             }
         case 10:
             if (hasObjective) {
-                return new ConditionListPrompt(context);
+                return new QuestConditionListPrompt(context);
             } else {
                 context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("invalidOption"));
-                return new StageMainPrompt(stageNum, context);
+                return new QuestStageMainPrompt(stageNum, context);
             }
         case 11:
             if (hasObjective) {
-                return new DelayPrompt(context);
+                return new QuestDelayPrompt(context);
             } else {
                 context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("invalidOption"));
-                return new StageMainPrompt(stageNum, context);
+                return new QuestStageMainPrompt(stageNum, context);
             }
         case 12:
             if (context.getSessionData(stagePrefix + CK.S_DELAY) == null) {
                 context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("stageEditorNoDelaySet"));
-                return new StageMainPrompt(stageNum, context);
+                return new QuestStageMainPrompt(stageNum, context);
             } else {
-                return new DelayMessagePrompt(context);
+                return new QuestDelayMessagePrompt(context);
             }
         case 13:
             if (hasObjective) {
-                return new StartMessagePrompt(context);
+                return new QuestStartMessagePrompt(context);
             } else {
                 context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("invalidOption"));
-                return new StageMainPrompt(stageNum, context);
+                return new QuestStageMainPrompt(stageNum, context);
             }
         case 14:
             if (hasObjective) {
-                return new CompleteMessagePrompt(context);
+                return new QuestCompleteMessagePrompt(context);
             } else {
                 context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("invalidOption"));
-                return new StageMainPrompt(stageNum, context);
+                return new QuestStageMainPrompt(stageNum, context);
             }
         case 15:
             if (hasObjective) {
@@ -535,14 +535,14 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                         .build();
             } else {
                 context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("invalidOption"));
-                return new StageMainPrompt(stageNum, context);
+                return new QuestStageMainPrompt(stageNum, context);
             }
         case 16:
-            return new StageDeletePrompt(context);
+            return new QuestStageDeletePrompt(context);
         case 17:
-            return new StageMenuPrompt(context);
+            return new QuestStageMenuPrompt(context);
         default:
-            return new StageMainPrompt(stageNum, context);
+            return new QuestStageMainPrompt(stageNum, context);
         }
     }
     
@@ -575,9 +575,9 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
         return false;
     }
     
-    public class KillPlayerPrompt extends QuestsEditorStringPrompt {
+    public class QuestKillPlayerPrompt extends QuestsEditorStringPrompt {
         
-        public KillPlayerPrompt(final ConversationContext context) {
+        public QuestKillPlayerPrompt(final ConversationContext context) {
             super(context);
         }
 
@@ -593,11 +593,9 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
 
         @Override
         public @NotNull String getPromptText(final @NotNull ConversationContext context) {
-            if (context.getPlugin() != null) {
-                final QuestsEditorPostOpenStringPromptEvent event
-                        = new QuestsEditorPostOpenStringPromptEvent(context, this);
-                context.getPlugin().getServer().getPluginManager().callEvent(event);
-            }
+            final QuestsEditorPostOpenStringPromptEvent event
+                    = new QuestsEditorPostOpenStringPromptEvent(context, this);
+            plugin.getServer().getPluginManager().callEvent(event);
             
             return ChatColor.YELLOW + getQueryText(context);
         }
@@ -610,25 +608,25 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                     final int i = Integer.parseInt(input);
                     if (i < 0) {
                         context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("stageEditorPositiveAmount"));
-                        return new KillPlayerPrompt(context);
+                        return new QuestKillPlayerPrompt(context);
                     } else if (i > 0) {
                         context.setSessionData(stagePrefix + CK.S_PLAYER_KILL, i);
                     }
                 } catch (final NumberFormatException e) {
                     context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("reqNotANumber")
                             .replace("<input>", input));
-                    return new KillPlayerPrompt(context);
+                    return new QuestKillPlayerPrompt(context);
                 }
             } else if (input != null && input.equalsIgnoreCase(Lang.get("cmdClear"))) {
                 context.setSessionData(stagePrefix + CK.S_PLAYER_KILL, null);
             }
-            return new StageMainPrompt(stageNum, context);
+            return new QuestStageMainPrompt(stageNum, context);
         }
     }
     
-    public class ReachListPrompt extends QuestsEditorNumericPrompt {
+    public class QuestReachListPrompt extends QuestsEditorNumericPrompt {
 
-        public ReachListPrompt(final ConversationContext context) {
+        public QuestReachListPrompt(final ConversationContext context) {
             super(context);
         }
         
@@ -684,7 +682,7 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
             switch(number) {
             case 1:
                 if (context.getSessionData(stagePrefix + CK.S_REACH_LOCATIONS) == null) {
-                    return ChatColor.GRAY + " (" + Lang.get("noneSet") + ")";
+                    return ChatColor.GRAY + "(" + Lang.get("noneSet") + ")";
                 } else {
                     final StringBuilder text = new StringBuilder();
                     final List<String> locations
@@ -699,7 +697,7 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                 }
             case 2:
                 if (context.getSessionData(stagePrefix + CK.S_REACH_LOCATIONS_RADIUS) == null) {
-                    return ChatColor.GRAY + " (" + Lang.get("noneSet") + ")";
+                    return ChatColor.GRAY + "(" + Lang.get("noneSet") + ")";
                 } else {
                     final StringBuilder text = new StringBuilder();
                     final List<Integer> radius
@@ -713,7 +711,7 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                 }
             case 3:
                 if (context.getSessionData(stagePrefix + CK.S_REACH_LOCATIONS_NAMES) == null) {
-                    return ChatColor.GRAY + " (" + Lang.get("noneSet") + ")";
+                    return ChatColor.GRAY + "(" + Lang.get("noneSet") + ")";
                 } else {
                     final StringBuilder text = new StringBuilder();
                     final List<String> names
@@ -735,11 +733,9 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
         
         @Override
         public @NotNull String getBasicPromptText(final @NotNull ConversationContext context) {
-            if (context.getPlugin() != null) {
-                final QuestsEditorPostOpenNumericPromptEvent event
-                        = new QuestsEditorPostOpenNumericPromptEvent(context, this);
-                context.getPlugin().getServer().getPluginManager().callEvent(event);
-            }
+            final QuestsEditorPostOpenNumericPromptEvent event
+                    = new QuestsEditorPostOpenNumericPromptEvent(context, this);
+            plugin.getServer().getPluginManager().callEvent(event);
 
             final StringBuilder text = new StringBuilder(ChatColor.AQUA + "- " + getTitle(context) + " -");
             for (int i = 1; i <= size; i++) {
@@ -759,32 +755,32 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                     final Map<UUID, Block> temp = plugin.getQuestFactory().getSelectedReachLocations();
                     temp.put(((Player) context.getForWhom()).getUniqueId(), null);
                     plugin.getQuestFactory().setSelectedReachLocations(temp);
-                    return new ReachLocationPrompt(context);
+                    return new QuestReachLocationPrompt(context);
                 } else {
                     context.getForWhom().sendRawMessage(ChatColor.YELLOW + Lang.get("consoleError"));
-                    return new ReachListPrompt(context);
+                    return new QuestReachListPrompt(context);
                 }
                 
             case 2:
                 if (context.getSessionData(stagePrefix + CK.S_REACH_LOCATIONS) == null) {
                     context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("stageEditorNoLocations"));
-                    return new ReachListPrompt(context);
+                    return new QuestReachListPrompt(context);
                 } else {
-                    return new ReachRadiiPrompt(context);
+                    return new QuestReachRadiiPrompt(context);
                 }
             case 3:
                 if (context.getSessionData(stagePrefix + CK.S_REACH_LOCATIONS) == null) {
                     context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("stageEditorNoLocations"));
-                    return new ReachListPrompt(context);
+                    return new QuestReachListPrompt(context);
                 } else {
-                    return new ReachNamesPrompt(context);
+                    return new QuestReachNamesPrompt(context);
                 }
             case 4:
                 context.getForWhom().sendRawMessage(ChatColor.YELLOW + Lang.get("stageEditorObjectiveCleared"));
                 context.setSessionData(stagePrefix + CK.S_REACH_LOCATIONS, null);
                 context.setSessionData(stagePrefix + CK.S_REACH_LOCATIONS_RADIUS, null);
                 context.setSessionData(stagePrefix + CK.S_REACH_LOCATIONS_NAMES, null);
-                return new ReachListPrompt(context);
+                return new QuestReachListPrompt(context);
             case 5:
                 final int one;
                 final int two;
@@ -811,20 +807,20 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                     three = 0;
                 }
                 if (one == two && two == three) {
-                    return new StageMainPrompt(stageNum, context);
+                    return new QuestStageMainPrompt(stageNum, context);
                 } else {
                     context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("listsNotSameSize"));
-                    return new ReachListPrompt(context);
+                    return new QuestReachListPrompt(context);
                 }
             default:
-                return new StageMainPrompt(stageNum, context);
+                return new QuestStageMainPrompt(stageNum, context);
             }
         }
     }
 
-    public class ReachLocationPrompt extends QuestsEditorStringPrompt {
+    public class QuestReachLocationPrompt extends QuestsEditorStringPrompt {
         
-        public ReachLocationPrompt(final ConversationContext context) {
+        public QuestReachLocationPrompt(final ConversationContext context) {
             super(context);
         }
 
@@ -840,11 +836,9 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
 
         @Override
         public @NotNull String getPromptText(final @NotNull ConversationContext context) {
-            if (context.getPlugin() != null) {
-                final QuestsEditorPostOpenStringPromptEvent event
-                        = new QuestsEditorPostOpenStringPromptEvent(context, this);
-                context.getPlugin().getServer().getPluginManager().callEvent(event);
-            }
+            final QuestsEditorPostOpenStringPromptEvent event
+                    = new QuestsEditorPostOpenStringPromptEvent(context, this);
+            plugin.getServer().getPluginManager().callEvent(event);
             
             return ChatColor.YELLOW + getQueryText(context);
         }
@@ -857,38 +851,57 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                 final Block block = plugin.getQuestFactory().getSelectedReachLocations().get(player.getUniqueId());
                 if (block != null) {
                     final Location loc = block.getLocation();
-                    final LinkedList<String> locations;
-                    if (context.getSessionData(stagePrefix + CK.S_REACH_LOCATIONS) != null) {
-                        locations = (LinkedList<String>) context.getSessionData(stagePrefix + CK.S_REACH_LOCATIONS);
-                    } else {
-                        locations = new LinkedList<>();
-                    }
+                    final LinkedList<String> locations
+                            = context.getSessionData(stagePrefix + CK.S_REACH_LOCATIONS) != null
+                            ? (LinkedList<String>) context.getSessionData(stagePrefix + CK.S_REACH_LOCATIONS)
+                            : new LinkedList<>();
                     if (locations != null) {
                         locations.add(ConfigUtil.getLocationInfo(loc));
                     }
                     context.setSessionData(stagePrefix + CK.S_REACH_LOCATIONS, locations);
-                    final Map<UUID, Block> temp = plugin.getQuestFactory().getSelectedReachLocations();
-                    temp.remove(player.getUniqueId());
-                    plugin.getQuestFactory().setSelectedReachLocations(temp);
+
+                    LinkedList<Integer> amounts = new LinkedList<>();
+                    LinkedList<String> names = new LinkedList<>();
+                    if (context.getSessionData(stagePrefix + CK.S_REACH_LOCATIONS_RADIUS) != null) {
+                        amounts = (LinkedList<Integer>) context.getSessionData(stagePrefix + CK.S_REACH_LOCATIONS_RADIUS);
+                    }
+                    if (context.getSessionData(stagePrefix + CK.S_REACH_LOCATIONS_NAMES) != null) {
+                        names = (LinkedList<String>) context.getSessionData(stagePrefix + CK.S_REACH_LOCATIONS_NAMES);
+                    }
+                    if (locations != null && amounts != null && names != null) {
+                        for (int i = 0; i < locations.size(); i++) {
+                            if (i >= amounts.size()) {
+                                amounts.add(5);
+                            }
+                            if (i >= names.size()) {
+                                names.add(Lang.get("location").replace("<id>", "#" + (i + 1)));
+                            }
+                        }
+                    }
+                    context.setSessionData(stagePrefix + CK.S_REACH_LOCATIONS_RADIUS, amounts);
+                    context.setSessionData(stagePrefix + CK.S_REACH_LOCATIONS_NAMES, names);
                 } else {
                     player.sendMessage(ChatColor.RED + Lang.get("stageEditorNoBlockSelected"));
-                    return new ReachLocationPrompt(context);
+                    return new QuestReachLocationPrompt(context);
                 }
-                return new ReachListPrompt(context);
+                final Map<UUID, Block> temp = plugin.getQuestFactory().getSelectedReachLocations();
+                temp.remove(player.getUniqueId());
+                plugin.getQuestFactory().setSelectedReachLocations(temp);
+                return new QuestReachListPrompt(context);
             } else if (input != null && input.equalsIgnoreCase(Lang.get("cmdCancel"))) {
                 final Map<UUID, Block> temp = plugin.getQuestFactory().getSelectedReachLocations();
                 temp.remove(player.getUniqueId());
                 plugin.getQuestFactory().setSelectedReachLocations(temp);
-                return new ReachListPrompt(context);
+                return new QuestReachListPrompt(context);
             } else {
-                return new ReachLocationPrompt(context);
+                return new QuestReachLocationPrompt(context);
             }
         }
     }
 
-    public class ReachRadiiPrompt extends QuestsEditorStringPrompt {
+    public class QuestReachRadiiPrompt extends QuestsEditorStringPrompt {
         
-        public ReachRadiiPrompt(final ConversationContext context) {
+        public QuestReachRadiiPrompt(final ConversationContext context) {
             super(context);
         }
 
@@ -904,18 +917,15 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
 
         @Override
         public @NotNull String getPromptText(final @NotNull ConversationContext context) {
-            if (context.getPlugin() != null) {
-                final QuestsEditorPostOpenStringPromptEvent event
-                        = new QuestsEditorPostOpenStringPromptEvent(context, this);
-                context.getPlugin().getServer().getPluginManager().callEvent(event);
-            }
+            final QuestsEditorPostOpenStringPromptEvent event
+                    = new QuestsEditorPostOpenStringPromptEvent(context, this);
+            plugin.getServer().getPluginManager().callEvent(event);
 
             return ChatColor.YELLOW + getQueryText(context);
         }
 
         @Override
-        public Prompt acceptInput(final ConversationContext context, final String input) {
-            final Player player = (Player) context.getForWhom();
+        public Prompt acceptInput(final @NotNull ConversationContext context, final String input) {
             if (input != null && !input.equalsIgnoreCase(Lang.get("cmdCancel"))) {
                 final LinkedList<Integer> radii = new LinkedList<>();
                 for (final String s : input.split(" ")) {
@@ -924,23 +934,24 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                         if (i < 1) {
                             context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("invalidMinimum")
                                     .replace("<number>", "1"));
-                            return new ReachRadiiPrompt(context);
+                            return new QuestReachRadiiPrompt(context);
                         }
                         radii.add(i);
                     } catch (final NumberFormatException e) {
-                        player.sendMessage(ChatColor.RED + Lang.get("reqNotANumber").replace("<input>", input));
-                        return new ReachRadiiPrompt(context);
+                        context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("reqNotANumber")
+                                .replace("<input>", input));
+                        return new QuestReachRadiiPrompt(context);
                     }
                 }
                 context.setSessionData(stagePrefix + CK.S_REACH_LOCATIONS_RADIUS, radii);
             }
-            return new ReachListPrompt(context);
+            return new QuestReachListPrompt(context);
         }
     }
 
-    public class ReachNamesPrompt extends QuestsEditorStringPrompt {
+    public class QuestReachNamesPrompt extends QuestsEditorStringPrompt {
         
-        public ReachNamesPrompt(final ConversationContext context) {
+        public QuestReachNamesPrompt(final ConversationContext context) {
             super(context);
         }
 
@@ -956,11 +967,9 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
 
         @Override
         public @NotNull String getPromptText(final @NotNull ConversationContext context) {
-            if (context.getPlugin() != null) {
-                final QuestsEditorPostOpenStringPromptEvent event
-                        = new QuestsEditorPostOpenStringPromptEvent(context, this);
-                context.getPlugin().getServer().getPluginManager().callEvent(event);
-            }
+            final QuestsEditorPostOpenStringPromptEvent event
+                    = new QuestsEditorPostOpenStringPromptEvent(context, this);
+            plugin.getServer().getPluginManager().callEvent(event);
             
             return ChatColor.YELLOW + getQueryText(context);
         }
@@ -971,13 +980,13 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                 final LinkedList<String> locNames = new LinkedList<>(Arrays.asList(input.split(Lang.get("charSemi"))));
                 context.setSessionData(stagePrefix + CK.S_REACH_LOCATIONS_NAMES, locNames);
             }
-            return new ReachListPrompt(context);
+            return new QuestReachListPrompt(context);
         }
     }
 
-    public class PasswordListPrompt extends QuestsEditorNumericPrompt {
+    public class QuestPasswordListPrompt extends QuestsEditorNumericPrompt {
 
-        public PasswordListPrompt(final ConversationContext context) {
+        public QuestPasswordListPrompt(final ConversationContext context) {
             super(context);
         }
         
@@ -1030,7 +1039,7 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
             switch(number) {
             case 1:
                 if (context.getSessionData(stagePrefix + CK.S_PASSWORD_DISPLAYS) == null) {
-                    return ChatColor.GRAY + " (" + Lang.get("noneSet") + ")";
+                    return ChatColor.GRAY + "(" + Lang.get("noneSet") + ")";
                 } else {
                     final StringBuilder text = new StringBuilder();
                     final List<String> displays = (List<String>) context.getSessionData(stagePrefix
@@ -1045,7 +1054,7 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                 }
             case 2:
                 if (context.getSessionData(stagePrefix + CK.S_PASSWORD_PHRASES) == null) {
-                    return ChatColor.GRAY + " (" + Lang.get("noneSet") + ")";
+                    return ChatColor.GRAY + "(" + Lang.get("noneSet") + ")";
                 } else {
                     final StringBuilder text = new StringBuilder();
                     final List<String> phrases = (List<String>) context.getSessionData(stagePrefix
@@ -1068,11 +1077,9 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
 
         @Override
         public @NotNull String getBasicPromptText(final @NotNull ConversationContext context) {
-            if (context.getPlugin() != null) {
-                final QuestsEditorPostOpenNumericPromptEvent event
-                        = new QuestsEditorPostOpenNumericPromptEvent(context, this);
-                context.getPlugin().getServer().getPluginManager().callEvent(event);
-            }
+            final QuestsEditorPostOpenNumericPromptEvent event
+                    = new QuestsEditorPostOpenNumericPromptEvent(context, this);
+            plugin.getServer().getPluginManager().callEvent(event);
 
             final StringBuilder text = new StringBuilder(ChatColor.AQUA + "- " + getTitle(context) + " -");
             for (int i = 1; i <= size; i++) {
@@ -1088,19 +1095,19 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
         protected Prompt acceptValidatedInput(final @NotNull ConversationContext context, final Number input) {
             switch(input.intValue()) {
             case 1:
-                return new PasswordDisplayPrompt(context);
+                return new QuestPasswordDisplayPrompt(context);
             case 2:
                 if (context.getSessionData(stagePrefix + CK.S_PASSWORD_DISPLAYS) == null) {
                     context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("stageEditorMustSetPasswordDisplays"));
-                    return new PasswordListPrompt(context);
+                    return new QuestPasswordListPrompt(context);
                 } else {
-                    return new PasswordPhrasePrompt(context);
+                    return new QuestPasswordPhrasePrompt(context);
                 }
             case 3:
                 context.getForWhom().sendRawMessage(ChatColor.YELLOW + Lang.get("stageEditorObjectiveCleared"));
                 context.setSessionData(stagePrefix + CK.S_PASSWORD_DISPLAYS, null);
                 context.setSessionData(stagePrefix + CK.S_PASSWORD_PHRASES, null);
-                return new PasswordListPrompt(context);
+                return new QuestPasswordListPrompt(context);
             case 4:
                 final int one;
                 final int two;
@@ -1118,20 +1125,20 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                     two = 0;
                 }
                 if (one == two) {
-                    return new StageMainPrompt(stageNum, context);
+                    return new QuestStageMainPrompt(stageNum, context);
                 } else {
                     context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("listsNotSameSize"));
-                    return new PasswordListPrompt(context);
+                    return new QuestPasswordListPrompt(context);
                 }
             default:
-                return new StageMainPrompt(stageNum, context);
+                return new QuestStageMainPrompt(stageNum, context);
             }
         }
     }
 
-    public class PasswordDisplayPrompt extends QuestsEditorStringPrompt {
+    public class QuestPasswordDisplayPrompt extends QuestsEditorStringPrompt {
 
-        public PasswordDisplayPrompt(final ConversationContext context) {
+        public QuestPasswordDisplayPrompt(final ConversationContext context) {
             super(context);
         }
         
@@ -1147,11 +1154,9 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
 
         @Override
         public @NotNull String getPromptText(final @NotNull ConversationContext context) {
-            if (context.getPlugin() != null) {
-                final QuestsEditorPostOpenStringPromptEvent event
-                        = new QuestsEditorPostOpenStringPromptEvent(context, this);
-                context.getPlugin().getServer().getPluginManager().callEvent(event);
-            }
+            final QuestsEditorPostOpenStringPromptEvent event
+                    = new QuestsEditorPostOpenStringPromptEvent(context, this);
+            plugin.getServer().getPluginManager().callEvent(event);
             
             return ChatColor.YELLOW + getQueryText(context) + "\n";
         }
@@ -1172,13 +1177,13 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                     context.setSessionData(stagePrefix + CK.S_PASSWORD_DISPLAYS, displays);
                 }
             }
-            return new PasswordListPrompt(context);
+            return new QuestPasswordListPrompt(context);
         }
     }
 
-    public class PasswordPhrasePrompt extends QuestsEditorStringPrompt {
+    public class QuestPasswordPhrasePrompt extends QuestsEditorStringPrompt {
         
-        public PasswordPhrasePrompt(final ConversationContext context) {
+        public QuestPasswordPhrasePrompt(final ConversationContext context) {
             super(context);
         }
 
@@ -1195,11 +1200,9 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
 
         @Override
         public @NotNull String getPromptText(final @NotNull ConversationContext context) {
-            if (context.getPlugin() != null) {
-                final QuestsEditorPostOpenStringPromptEvent event
-                        = new QuestsEditorPostOpenStringPromptEvent(context, this);
-                context.getPlugin().getServer().getPluginManager().callEvent(event);
-            }
+            final QuestsEditorPostOpenStringPromptEvent event
+                    = new QuestsEditorPostOpenStringPromptEvent(context, this);
+            plugin.getServer().getPluginManager().callEvent(event);
             
             return ChatColor.YELLOW + getQueryText(context) + "\n";
         }
@@ -1220,13 +1223,13 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                     context.setSessionData(stagePrefix + CK.S_PASSWORD_PHRASES, phrases);
                 }
             }
-            return new PasswordListPrompt(context);
+            return new QuestPasswordListPrompt(context);
         }
     }
 
-    public class ActionListPrompt extends QuestsEditorNumericPrompt {
+    public class QuestActionListPrompt extends QuestsEditorNumericPrompt {
 
-        public ActionListPrompt(final ConversationContext context) {
+        public QuestActionListPrompt(final ConversationContext context) {
             super(context);
         }
         
@@ -1370,11 +1373,9 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
 
         @Override
         public @NotNull String getBasicPromptText(final @NotNull ConversationContext context) {
-            if (context.getPlugin() != null) {
-                final QuestsEditorPostOpenNumericPromptEvent event
-                        = new QuestsEditorPostOpenNumericPromptEvent(context, this);
-                context.getPlugin().getServer().getPluginManager().callEvent(event);
-            }
+            final QuestsEditorPostOpenNumericPromptEvent event
+                    = new QuestsEditorPostOpenNumericPromptEvent(context, this);
+            plugin.getServer().getPluginManager().callEvent(event);
 
             final StringBuilder text = new StringBuilder(ChatColor.AQUA + "- " + getTitle(context) + " -");
             for (int i = 1; i <= size; i++) {
@@ -1389,30 +1390,30 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
         protected Prompt acceptValidatedInput(final @NotNull ConversationContext context, final Number input) {
             switch(input.intValue()) {
             case 1:
-                return new StartActionPrompt(context);
+                return new QuestStartActionPrompt(context);
             case 2:
-                return new FinishActionPrompt(context);
+                return new QuestFinishActionPrompt(context);
             case 3:
-                return new FailActionPrompt(context);
+                return new QuestFailActionPrompt(context);
             case 4:
-                return new DeathActionPrompt(context);
+                return new QuestDeathActionPrompt(context);
             case 5:
-                return new DisconnectActionPrompt(context);
+                return new QuestDisconnectActionPrompt(context);
             case 6:
-                return new ChatActionPrompt(context);
+                return new QuestChatActionPrompt(context);
             case 7:
-                return new CommandActionPrompt(context);
+                return new QuestCommandActionPrompt(context);
             case 8:
-                return new StageMainPrompt(stageNum, context);
+                return new QuestStageMainPrompt(stageNum, context);
             default:
-                return new ActionListPrompt(context);
+                return new QuestActionListPrompt(context);
             }
         }
     }
 
-    public class StartActionPrompt extends QuestsEditorStringPrompt {
+    public class QuestStartActionPrompt extends QuestsEditorStringPrompt {
         
-        public StartActionPrompt(final ConversationContext context) {
+        public QuestStartActionPrompt(final ConversationContext context) {
             super(context);
         }
 
@@ -1428,11 +1429,9 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
 
         @Override
         public @NotNull String getPromptText(final @NotNull ConversationContext context) {
-            if (context.getPlugin() != null) {
-                final QuestsEditorPostOpenStringPromptEvent event
-                        = new QuestsEditorPostOpenStringPromptEvent(context, this);
-                context.getPlugin().getServer().getPluginManager().callEvent(event);
-            }
+            final QuestsEditorPostOpenStringPromptEvent event
+                    = new QuestsEditorPostOpenStringPromptEvent(context, this);
+            plugin.getServer().getPluginManager().callEvent(event);
             
             final StringBuilder text = new StringBuilder(ChatColor.AQUA + "- " + getTitle(context) + " -\n");
             if (plugin.getLoadedActions().isEmpty()) {
@@ -1446,8 +1445,7 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
         }
 
         @Override
-        public Prompt acceptInput(final ConversationContext context, final String input) {
-            final Player player = (Player) context.getForWhom();
+        public Prompt acceptInput(final @NotNull ConversationContext context, final String input) {
             if (input != null && !input.equalsIgnoreCase(Lang.get("cmdCancel"))
                     && !input.equalsIgnoreCase(Lang.get("cmdClear"))) {
                 IAction found = null;
@@ -1458,28 +1456,28 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                     }
                 }
                 if (found == null) {
-                    player.sendMessage(ChatColor.RED + input + ChatColor.YELLOW + " " 
-                            + Lang.get("stageEditorInvalidEvent"));
-                    return new StartActionPrompt(context);
+                    context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("stageEditorInvalidEvent")
+                            .replace("<input>", input));
+                    return new QuestStartActionPrompt(context);
                 } else {
                     context.setSessionData(stagePrefix + CK.S_START_EVENT, found.getName());
-                    return new ActionListPrompt(context);
+                    return new QuestActionListPrompt(context);
                 }
             } else if (input != null && input.equalsIgnoreCase(Lang.get("cmdCancel"))) {
-                return new ActionListPrompt(context);
+                return new QuestActionListPrompt(context);
             } else if (input != null && input.equalsIgnoreCase(Lang.get("cmdClear"))) {
                 context.setSessionData(stagePrefix + CK.S_START_EVENT, null);
-                player.sendMessage(ChatColor.YELLOW + Lang.get("stageEditorEventCleared"));
-                return new ActionListPrompt(context);
+                context.getForWhom().sendRawMessage(ChatColor.YELLOW + Lang.get("stageEditorEventCleared"));
+                return new QuestActionListPrompt(context);
             } else {
-                return new StartActionPrompt(context);
+                return new QuestStartActionPrompt(context);
             }
         }
     }
 
-    public class FinishActionPrompt extends QuestsEditorStringPrompt {
+    public class QuestFinishActionPrompt extends QuestsEditorStringPrompt {
         
-        public FinishActionPrompt(final ConversationContext context) {
+        public QuestFinishActionPrompt(final ConversationContext context) {
             super(context);
         }
 
@@ -1495,11 +1493,9 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
 
         @Override
         public @NotNull String getPromptText(final @NotNull ConversationContext context) {
-            if (context.getPlugin() != null) {
-                final QuestsEditorPostOpenStringPromptEvent event
-                        = new QuestsEditorPostOpenStringPromptEvent(context, this);
-                context.getPlugin().getServer().getPluginManager().callEvent(event);
-            }
+            final QuestsEditorPostOpenStringPromptEvent event
+                    = new QuestsEditorPostOpenStringPromptEvent(context, this);
+            plugin.getServer().getPluginManager().callEvent(event);
             
             final StringBuilder text = new StringBuilder(ChatColor.AQUA + "- " + getTitle(context) + " -\n");
             if (plugin.getLoadedActions().isEmpty()) {
@@ -1513,8 +1509,7 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
         }
 
         @Override
-        public Prompt acceptInput(final ConversationContext context, final String input) {
-            final Player player = (Player) context.getForWhom();
+        public Prompt acceptInput(final @NotNull ConversationContext context, final String input) {
             if (input != null && !input.equalsIgnoreCase(Lang.get("cmdCancel"))
                     && !input.equalsIgnoreCase(Lang.get("cmdClear"))) {
                 IAction found = null;
@@ -1525,28 +1520,28 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                     }
                 }
                 if (found == null) {
-                    player.sendMessage(ChatColor.RED + input + ChatColor.YELLOW + " " 
-                            + Lang.get("stageEditorInvalidEvent"));
-                    return new FinishActionPrompt(context);
+                    context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("stageEditorInvalidEvent")
+                            .replace("<input>", input));
+                    return new QuestFinishActionPrompt(context);
                 } else {
                     context.setSessionData(stagePrefix + CK.S_FINISH_EVENT, found.getName());
-                    return new ActionListPrompt(context);
+                    return new QuestActionListPrompt(context);
                 }
             } else if (input != null && input.equalsIgnoreCase(Lang.get("cmdCancel"))) {
-                return new ActionListPrompt(context);
+                return new QuestActionListPrompt(context);
             } else if (input != null && input.equalsIgnoreCase(Lang.get("cmdClear"))) {
                 context.setSessionData(stagePrefix + CK.S_FINISH_EVENT, null);
-                player.sendMessage(ChatColor.YELLOW + Lang.get("stageEditorEventCleared"));
-                return new ActionListPrompt(context);
+                context.getForWhom().sendRawMessage(ChatColor.YELLOW + Lang.get("stageEditorEventCleared"));
+                return new QuestActionListPrompt(context);
             } else {
-                return new FinishActionPrompt(context);
+                return new QuestFinishActionPrompt(context);
             }
         }
     }
     
-    public class FailActionPrompt extends QuestsEditorStringPrompt {
+    public class QuestFailActionPrompt extends QuestsEditorStringPrompt {
         
-        public FailActionPrompt(final ConversationContext context) {
+        public QuestFailActionPrompt(final ConversationContext context) {
             super(context);
         }
 
@@ -1562,11 +1557,9 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
 
         @Override
         public @NotNull String getPromptText(final @NotNull ConversationContext context) {
-            if (context.getPlugin() != null) {
-                final QuestsEditorPostOpenStringPromptEvent event
-                        = new QuestsEditorPostOpenStringPromptEvent(context, this);
-                context.getPlugin().getServer().getPluginManager().callEvent(event);
-            }
+            final QuestsEditorPostOpenStringPromptEvent event
+                    = new QuestsEditorPostOpenStringPromptEvent(context, this);
+            plugin.getServer().getPluginManager().callEvent(event);
             
             final StringBuilder text = new StringBuilder(ChatColor.AQUA + "- " + getTitle(context) + " -\n");
             if (plugin.getLoadedActions().isEmpty()) {
@@ -1580,8 +1573,7 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
         }
 
         @Override
-        public Prompt acceptInput(final ConversationContext context, final String input) {
-            final Player player = (Player) context.getForWhom();
+        public Prompt acceptInput(final @NotNull ConversationContext context, final String input) {
             if (input != null && !input.equalsIgnoreCase(Lang.get("cmdCancel"))
                     && !input.equalsIgnoreCase(Lang.get("cmdClear"))) {
                 IAction found = null;
@@ -1592,28 +1584,28 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                     }
                 }
                 if (found == null) {
-                    player.sendMessage(ChatColor.RED + input + ChatColor.YELLOW + " " 
-                            + Lang.get("stageEditorInvalidEvent"));
-                    return new FailActionPrompt(context);
+                    context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("stageEditorInvalidEvent")
+                            .replace("<input>", input));
+                    return new QuestFailActionPrompt(context);
                 } else {
                     context.setSessionData(stagePrefix + CK.S_FAIL_EVENT, found.getName());
-                    return new ActionListPrompt(context);
+                    return new QuestActionListPrompt(context);
                 }
             } else if (input != null && input.equalsIgnoreCase(Lang.get("cmdCancel"))) {
-                return new ActionListPrompt(context);
+                return new QuestActionListPrompt(context);
             } else if (input != null && input.equalsIgnoreCase(Lang.get("cmdClear"))) {
                 context.setSessionData(stagePrefix + CK.S_FAIL_EVENT, null);
-                player.sendMessage(ChatColor.YELLOW + Lang.get("stageEditorEventCleared"));
-                return new ActionListPrompt(context);
+                context.getForWhom().sendRawMessage(ChatColor.YELLOW + Lang.get("stageEditorEventCleared"));
+                return new QuestActionListPrompt(context);
             } else {
-                return new FailActionPrompt(context);
+                return new QuestFailActionPrompt(context);
             }
         }
     }
 
-    public class DeathActionPrompt extends QuestsEditorStringPrompt {
+    public class QuestDeathActionPrompt extends QuestsEditorStringPrompt {
         
-        public DeathActionPrompt(final ConversationContext context) {
+        public QuestDeathActionPrompt(final ConversationContext context) {
             super(context);
         }
 
@@ -1629,11 +1621,9 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
 
         @Override
         public @NotNull String getPromptText(final @NotNull ConversationContext context) {
-            if (context.getPlugin() != null) {
-                final QuestsEditorPostOpenStringPromptEvent event
-                        = new QuestsEditorPostOpenStringPromptEvent(context, this);
-                context.getPlugin().getServer().getPluginManager().callEvent(event);
-            }
+            final QuestsEditorPostOpenStringPromptEvent event
+                    = new QuestsEditorPostOpenStringPromptEvent(context, this);
+            plugin.getServer().getPluginManager().callEvent(event);
             
             final StringBuilder text = new StringBuilder(ChatColor.AQUA + "- " + getTitle(context) + " -\n");
             if (plugin.getLoadedActions().isEmpty()) {
@@ -1647,8 +1637,7 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
         }
 
         @Override
-        public Prompt acceptInput(final ConversationContext context, final String input) {
-            final Player player = (Player) context.getForWhom();
+        public Prompt acceptInput(final @NotNull ConversationContext context, final String input) {
             if (input != null && !input.equalsIgnoreCase(Lang.get("cmdCancel"))
                     && !input.equalsIgnoreCase(Lang.get("cmdClear"))) {
                 IAction found = null;
@@ -1659,28 +1648,28 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                     }
                 }
                 if (found == null) {
-                    player.sendMessage(ChatColor.RED + input + ChatColor.YELLOW + " " 
-                            + Lang.get("stageEditorInvalidEvent"));
-                    return new DeathActionPrompt(context);
+                    context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("stageEditorInvalidEvent")
+                            .replace("<input>", input));
+                    return new QuestDeathActionPrompt(context);
                 } else {
                     context.setSessionData(stagePrefix + CK.S_DEATH_EVENT, found.getName());
-                    return new ActionListPrompt(context);
+                    return new QuestActionListPrompt(context);
                 }
             } else if (input != null && input.equalsIgnoreCase(Lang.get("cmdCancel"))) {
-                return new ActionListPrompt(context);
+                return new QuestActionListPrompt(context);
             } else if (input != null && input.equalsIgnoreCase(Lang.get("cmdClear"))) {
                 context.setSessionData(stagePrefix + CK.S_DEATH_EVENT, null);
-                player.sendMessage(ChatColor.YELLOW + Lang.get("stageEditorEventCleared"));
-                return new ActionListPrompt(context);
+                context.getForWhom().sendRawMessage(ChatColor.YELLOW + Lang.get("stageEditorEventCleared"));
+                return new QuestActionListPrompt(context);
             } else {
-                return new DeathActionPrompt(context);
+                return new QuestDeathActionPrompt(context);
             }
         }
     }
 
-    public class DisconnectActionPrompt extends QuestsEditorStringPrompt {
+    public class QuestDisconnectActionPrompt extends QuestsEditorStringPrompt {
         
-        public DisconnectActionPrompt(final ConversationContext context) {
+        public QuestDisconnectActionPrompt(final ConversationContext context) {
             super(context);
         }
 
@@ -1696,11 +1685,9 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
 
         @Override
         public @NotNull String getPromptText(final @NotNull ConversationContext context) {
-            if (context.getPlugin() != null) {
-                final QuestsEditorPostOpenStringPromptEvent event
-                        = new QuestsEditorPostOpenStringPromptEvent(context, this);
-                context.getPlugin().getServer().getPluginManager().callEvent(event);
-            }
+            final QuestsEditorPostOpenStringPromptEvent event
+                    = new QuestsEditorPostOpenStringPromptEvent(context, this);
+            plugin.getServer().getPluginManager().callEvent(event);
             
             final StringBuilder text = new StringBuilder(ChatColor.AQUA + "- " + getTitle(context) + " -\n");
             if (plugin.getLoadedActions().isEmpty()) {
@@ -1714,8 +1701,7 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
         }
 
         @Override
-        public Prompt acceptInput(final ConversationContext context, final String input) {
-            final Player player = (Player) context.getForWhom();
+        public Prompt acceptInput(final @NotNull ConversationContext context, final String input) {
             if (input != null && !input.equalsIgnoreCase(Lang.get("cmdCancel"))
                     && !input.equalsIgnoreCase(Lang.get("cmdClear"))) {
                 IAction found = null;
@@ -1726,28 +1712,28 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                     }
                 }
                 if (found == null) {
-                    player.sendMessage(ChatColor.RED + input + ChatColor.YELLOW + " " 
-                            + Lang.get("stageEditorInvalidEvent"));
-                    return new DisconnectActionPrompt(context);
+                    context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("stageEditorInvalidEvent")
+                            .replace("<input>", input));
+                    return new QuestDisconnectActionPrompt(context);
                 } else {
                     context.setSessionData(stagePrefix + CK.S_DISCONNECT_EVENT, found.getName());
-                    return new ActionListPrompt(context);
+                    return new QuestActionListPrompt(context);
                 }
             } else if (input != null && input.equalsIgnoreCase(Lang.get("cmdCancel"))) {
-                return new ActionListPrompt(context);
+                return new QuestActionListPrompt(context);
             } else if (input != null && input.equalsIgnoreCase(Lang.get("cmdClear"))) {
                 context.setSessionData(stagePrefix + CK.S_DISCONNECT_EVENT, null);
-                player.sendMessage(ChatColor.YELLOW + Lang.get("stageEditorEventCleared"));
-                return new ActionListPrompt(context);
+                context.getForWhom().sendRawMessage(ChatColor.YELLOW + Lang.get("stageEditorEventCleared"));
+                return new QuestActionListPrompt(context);
             } else {
-                return new DisconnectActionPrompt(context);
+                return new QuestDisconnectActionPrompt(context);
             }
         }
     }
 
-    public class ChatActionPrompt extends QuestsEditorStringPrompt {
+    public class QuestChatActionPrompt extends QuestsEditorStringPrompt {
         
-        public ChatActionPrompt(final ConversationContext context) {
+        public QuestChatActionPrompt(final ConversationContext context) {
             super(context);
         }
 
@@ -1763,11 +1749,9 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
 
         @Override
         public @NotNull String getPromptText(final @NotNull ConversationContext context) {
-            if (context.getPlugin() != null) {
-                final QuestsEditorPostOpenStringPromptEvent event
-                        = new QuestsEditorPostOpenStringPromptEvent(context, this);
-                context.getPlugin().getServer().getPluginManager().callEvent(event);
-            }
+            final QuestsEditorPostOpenStringPromptEvent event
+                    = new QuestsEditorPostOpenStringPromptEvent(context, this);
+            plugin.getServer().getPluginManager().callEvent(event);
             
             final StringBuilder text = new StringBuilder(ChatColor.AQUA + "- " + getTitle(context) + " -\n");
             if (plugin.getLoadedActions().isEmpty()) {
@@ -1781,8 +1765,7 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
         }
 
         @Override
-        public Prompt acceptInput(final ConversationContext context, final String input) {
-            final Player player = (Player) context.getForWhom();
+        public Prompt acceptInput(final @NotNull ConversationContext context, final String input) {
             if (input != null && !input.equalsIgnoreCase(Lang.get("cmdCancel"))
                     && !input.equalsIgnoreCase(Lang.get("cmdClear"))) {
                 IAction found = null;
@@ -1793,29 +1776,29 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                     }
                 }
                 if (found == null) {
-                    player.sendMessage(ChatColor.RED + input + ChatColor.YELLOW + " " 
-                            + Lang.get("stageEditorInvalidEvent"));
-                    return new ChatActionPrompt(context);
+                    context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("stageEditorInvalidEvent")
+                            .replace("<input>", input));
+                    return new QuestChatActionPrompt(context);
                 } else {
                     context.setSessionData(stagePrefix + CK.S_CHAT_TEMP_EVENT, found.getName());
-                    return new ChatActionTriggerPrompt(context);
+                    return new QuestChatActionTriggerPrompt(context);
                 }
             } else if (input != null && input.equalsIgnoreCase(Lang.get("cmdCancel"))) {
-                return new ActionListPrompt(context);
+                return new QuestActionListPrompt(context);
             } else if (input != null && input.equalsIgnoreCase(Lang.get("cmdClear"))) {
                 context.setSessionData(stagePrefix + CK.S_CHAT_EVENTS, null);
                 context.setSessionData(stagePrefix + CK.S_CHAT_EVENT_TRIGGERS, null);
-                player.sendMessage(ChatColor.YELLOW + Lang.get("stageEditorChatEventsCleared"));
-                return new ActionListPrompt(context);
+                context.getForWhom().sendRawMessage(ChatColor.YELLOW + Lang.get("stageEditorChatEventsCleared"));
+                return new QuestActionListPrompt(context);
             } else {
-                return new ChatActionPrompt(context);
+                return new QuestChatActionPrompt(context);
             }
         }
     }
 
-    public class ChatActionTriggerPrompt extends QuestsEditorStringPrompt {
+    public class QuestChatActionTriggerPrompt extends QuestsEditorStringPrompt {
         
-        public ChatActionTriggerPrompt(final ConversationContext context) {
+        public QuestChatActionTriggerPrompt(final ConversationContext context) {
             super(context);
         }
 
@@ -1837,11 +1820,9 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
 
         @Override
         public @NotNull String getPromptText(final @NotNull ConversationContext context) {
-            if (context.getPlugin() != null) {
-                final QuestsEditorPostOpenStringPromptEvent event
-                        = new QuestsEditorPostOpenStringPromptEvent(context, this);
-                context.getPlugin().getServer().getPluginManager().callEvent(event);
-            }
+            final QuestsEditorPostOpenStringPromptEvent event
+                    = new QuestsEditorPostOpenStringPromptEvent(context, this);
+            plugin.getServer().getPluginManager().callEvent(event);
             
             final String tempEvent = (String) context.getSessionData(stagePrefix + CK.S_CHAT_TEMP_EVENT);
             String text = ChatColor.GOLD + "- " + getTitle(context) + " -\n";
@@ -1864,7 +1845,7 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                     chatEventTriggers.add(input.trim());
                     context.setSessionData(stagePrefix + CK.S_CHAT_EVENTS, chatEvents);
                     context.setSessionData(stagePrefix + CK.S_CHAT_EVENT_TRIGGERS, chatEventTriggers);
-                    return new ActionListPrompt(context);
+                    return new QuestActionListPrompt(context);
                 } else {
                     final LinkedList<String> chatEvents 
                             = (LinkedList<String>) context.getSessionData(stagePrefix + CK.S_CHAT_EVENTS);
@@ -1877,19 +1858,19 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                         context.setSessionData(stagePrefix + CK.S_CHAT_EVENTS, chatEvents);
                         context.setSessionData(stagePrefix + CK.S_CHAT_EVENT_TRIGGERS, chatEventTriggers);
                     }
-                    return new ActionListPrompt(context);
+                    return new QuestActionListPrompt(context);
                 }
             } else if (input != null && input.equalsIgnoreCase(Lang.get("cmdCancel"))) {
-                return new ActionListPrompt(context);
+                return new QuestActionListPrompt(context);
             } else {
-                return new ChatActionTriggerPrompt(context);
+                return new QuestChatActionTriggerPrompt(context);
             }
         }
     }
     
-    public class CommandActionPrompt extends QuestsEditorStringPrompt {
+    public class QuestCommandActionPrompt extends QuestsEditorStringPrompt {
         
-        public CommandActionPrompt(final ConversationContext context) {
+        public QuestCommandActionPrompt(final ConversationContext context) {
             super(context);
         }
 
@@ -1905,11 +1886,9 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
 
         @Override
         public @NotNull String getPromptText(final @NotNull ConversationContext context) {
-            if (context.getPlugin() != null) {
-                final QuestsEditorPostOpenStringPromptEvent event
-                        = new QuestsEditorPostOpenStringPromptEvent(context, this);
-                context.getPlugin().getServer().getPluginManager().callEvent(event);
-            }
+            final QuestsEditorPostOpenStringPromptEvent event
+                    = new QuestsEditorPostOpenStringPromptEvent(context, this);
+            plugin.getServer().getPluginManager().callEvent(event);
 
             final StringBuilder text = new StringBuilder(ChatColor.AQUA + "- " + getTitle(context) + " -\n");
             if (plugin.getLoadedActions().isEmpty()) {
@@ -1923,8 +1902,7 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
         }
 
         @Override
-        public Prompt acceptInput(final ConversationContext context, final String input) {
-            final Player player = (Player) context.getForWhom();
+        public Prompt acceptInput(final @NotNull ConversationContext context, final String input) {
             if (input != null && !input.equalsIgnoreCase(Lang.get("cmdCancel"))
                     && !input.equalsIgnoreCase(Lang.get("cmdClear"))) {
                 IAction found = null;
@@ -1935,29 +1913,29 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                     }
                 }
                 if (found == null) {
-                    player.sendMessage(ChatColor.RED + input + ChatColor.YELLOW + " " 
-                            + Lang.get("stageEditorInvalidEvent"));
-                    return new CommandActionPrompt(context);
+                    context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("stageEditorInvalidEvent")
+                            .replace("<input>", input));
+                    return new QuestCommandActionPrompt(context);
                 } else {
                     context.setSessionData(stagePrefix + CK.S_COMMAND_TEMP_EVENT, found.getName());
-                    return new CommandActionTriggerPrompt(context);
+                    return new QuestCommandActionTriggerPrompt(context);
                 }
             } else if (input != null && input.equalsIgnoreCase(Lang.get("cmdCancel"))) {
-                return new ActionListPrompt(context);
+                return new QuestActionListPrompt(context);
             } else if (input != null && input.equalsIgnoreCase(Lang.get("cmdClear"))) {
                 context.setSessionData(stagePrefix + CK.S_COMMAND_EVENTS, null);
                 context.setSessionData(stagePrefix + CK.S_COMMAND_EVENT_TRIGGERS, null);
-                player.sendMessage(ChatColor.YELLOW + Lang.get("stageEditorCommandEventsCleared"));
-                return new ActionListPrompt(context);
+                context.getForWhom().sendRawMessage(ChatColor.YELLOW + Lang.get("stageEditorCommandEventsCleared"));
+                return new QuestActionListPrompt(context);
             } else {
-                return new CommandActionPrompt(context);
+                return new QuestCommandActionPrompt(context);
             }
         }
     }
 
-    public class CommandActionTriggerPrompt extends QuestsEditorStringPrompt {
+    public class QuestCommandActionTriggerPrompt extends QuestsEditorStringPrompt {
         
-        public CommandActionTriggerPrompt(final ConversationContext context) {
+        public QuestCommandActionTriggerPrompt(final ConversationContext context) {
             super(context);
         }
 
@@ -1979,12 +1957,9 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
 
         @Override
         public @NotNull String getPromptText(final @NotNull ConversationContext context) {
-            if (context.getPlugin() != null) {
-                final QuestsEditorPostOpenStringPromptEvent event
-                        = new QuestsEditorPostOpenStringPromptEvent(context, this);
-                context.getPlugin().getServer().getPluginManager().callEvent(event);
-            }
-
+            final QuestsEditorPostOpenStringPromptEvent event
+                    = new QuestsEditorPostOpenStringPromptEvent(context, this);
+            plugin.getServer().getPluginManager().callEvent(event);
             
             final String tempEvent = (String) context.getSessionData(stagePrefix + CK.S_COMMAND_TEMP_EVENT);
             String text = ChatColor.GOLD + "- " + getTitle(context) + " -\n";
@@ -2007,7 +1982,7 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                     commandEventTriggers.add(input.trim());
                     context.setSessionData(stagePrefix + CK.S_COMMAND_EVENTS, commandEvents);
                     context.setSessionData(stagePrefix + CK.S_COMMAND_EVENT_TRIGGERS, commandEventTriggers);
-                    return new ActionListPrompt(context);
+                    return new QuestActionListPrompt(context);
                 } else {
                     final LinkedList<String> commandEvents 
                             = (LinkedList<String>) context.getSessionData(stagePrefix + CK.S_COMMAND_EVENTS);
@@ -2020,19 +1995,19 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                         context.setSessionData(stagePrefix + CK.S_COMMAND_EVENTS, commandEvents);
                         context.setSessionData(stagePrefix + CK.S_COMMAND_EVENT_TRIGGERS, commandEventTriggers);
                     }
-                    return new ActionListPrompt(context);
+                    return new QuestActionListPrompt(context);
                 }
             } else if (input != null && input.equalsIgnoreCase(Lang.get("cmdCancel"))) {
-                return new ActionListPrompt(context);
+                return new QuestActionListPrompt(context);
             } else {
-                return new CommandActionTriggerPrompt(context);
+                return new QuestCommandActionTriggerPrompt(context);
             }
         }
     }
 
-    public class ConditionListPrompt extends QuestsEditorStringPrompt {
+    public class QuestConditionListPrompt extends QuestsEditorStringPrompt {
 
-        public ConditionListPrompt(final ConversationContext context) {
+        public QuestConditionListPrompt(final ConversationContext context) {
             super(context);
         }
 
@@ -2048,11 +2023,9 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
 
         @Override
         public @NotNull String getPromptText(final @NotNull ConversationContext context) {
-            if (context.getPlugin() != null) {
-                final QuestsEditorPostOpenStringPromptEvent event
-                        = new QuestsEditorPostOpenStringPromptEvent(context, this);
-                context.getPlugin().getServer().getPluginManager().callEvent(event);
-            }
+            final QuestsEditorPostOpenStringPromptEvent event
+                    = new QuestsEditorPostOpenStringPromptEvent(context, this);
+            plugin.getServer().getPluginManager().callEvent(event);
 
             final StringBuilder text = new StringBuilder(ChatColor.AQUA + "- " + getTitle(context) + " -\n");
             if (plugin.getLoadedConditions().isEmpty()) {
@@ -2066,8 +2039,7 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
         }
 
         @Override
-        public Prompt acceptInput(final ConversationContext context, final String input) {
-            final Player player = (Player) context.getForWhom();
+        public Prompt acceptInput(final @NotNull ConversationContext context, final String input) {
             if (input != null && !input.equalsIgnoreCase(Lang.get("cmdCancel"))
                     && !input.equalsIgnoreCase(Lang.get("cmdClear"))) {
                 ICondition found = null;
@@ -2078,28 +2050,28 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                     }
                 }
                 if (found == null) {
-                    player.sendMessage(ChatColor.RED + input + ChatColor.YELLOW + " " 
-                            + Lang.get("stageEditorInvalidCondition"));
-                    return new ConditionListPrompt(context);
+                    context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("stageEditorInvalidCondition")
+                            .replace("<input>", input));
+                    return new QuestConditionListPrompt(context);
                 } else {
                     context.setSessionData(stagePrefix + CK.S_CONDITION, found.getName());
-                    return new StageMainPrompt(stageNum, context);
+                    return new QuestStageMainPrompt(stageNum, context);
                 }
             } else if (input != null && input.equalsIgnoreCase(Lang.get("cmdCancel"))) {
-                return new StageMainPrompt(stageNum, context);
+                return new QuestStageMainPrompt(stageNum, context);
             } else if (input != null && input.equalsIgnoreCase(Lang.get("cmdClear"))) {
                 context.setSessionData(stagePrefix + CK.S_CONDITION, null);
-                player.sendMessage(ChatColor.YELLOW + Lang.get("stageEditorConditionCleared"));
-                return new StageMainPrompt(stageNum, context);
+                context.getForWhom().sendRawMessage(ChatColor.YELLOW + Lang.get("stageEditorConditionCleared"));
+                return new QuestStageMainPrompt(stageNum, context);
             } else {
-                return new ConditionListPrompt(context);
+                return new QuestConditionListPrompt(context);
             }
         }
     }
     
-    public class DelayPrompt extends QuestsEditorStringPrompt {
+    public class QuestDelayPrompt extends QuestsEditorStringPrompt {
         
-        public DelayPrompt(final ConversationContext context) {
+        public QuestDelayPrompt(final ConversationContext context) {
             super(context);
         }
 
@@ -2117,9 +2089,7 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
         public @NotNull String getPromptText(final @NotNull ConversationContext context) {
             final QuestsEditorPostOpenStringPromptEvent event 
                     = new QuestsEditorPostOpenStringPromptEvent(context, this);
-            if (context.getPlugin() != null) {
-                context.getPlugin().getServer().getPluginManager().callEvent(event);
-            }
+            plugin.getServer().getPluginManager().callEvent(event);
             
             return ChatColor.YELLOW + getQueryText(context);
         }
@@ -2128,36 +2098,38 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
         public Prompt acceptInput(final @NotNull ConversationContext context, final String input) {
             if (input != null) {
                 if (input.equalsIgnoreCase(Lang.get("cmdCancel"))) {
-                    return new StageMainPrompt(stageNum, context);
+                    return new QuestStageMainPrompt(stageNum, context);
                 }
                 if (input.equalsIgnoreCase(Lang.get("cmdClear"))) {
                     context.setSessionData(stagePrefix + CK.S_DELAY, null);
                     context.getForWhom().sendRawMessage(ChatColor.GREEN + Lang.get("stageEditorDelayCleared"));
-                    return new StageMainPrompt(stageNum, context);
+                    return new QuestStageMainPrompt(stageNum, context);
                 }
                 final long stageDelay;
                 try {
                     final int i = Integer.parseInt(input);
                     stageDelay = i * 1000L;
                 } catch (final NumberFormatException e) {
-                    context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("reqNotANumber").replace("<input>", input));
-                    return new DelayPrompt(context);
+                    context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("reqNotANumber")
+                            .replace("<input>", input));
+                    return new QuestDelayPrompt(context);
                 }
                 if (stageDelay < 1000) {
-                    context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("invalidMinimum").replace("<number>", "1"));
-                    return new DelayPrompt(context);
+                    context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("invalidMinimum")
+                            .replace("<number>", "1"));
+                    return new QuestDelayPrompt(context);
                 } else {
                     context.setSessionData(stagePrefix + CK.S_DELAY, stageDelay);
-                    return new StageMainPrompt(stageNum, context);
+                    return new QuestStageMainPrompt(stageNum, context);
                 }
             }
-            return new StageMainPrompt(stageNum, context);
+            return new QuestStageMainPrompt(stageNum, context);
         }
     }
 
-    public class DelayMessagePrompt extends QuestsEditorStringPrompt {
+    public class QuestDelayMessagePrompt extends QuestsEditorStringPrompt {
         
-        public DelayMessagePrompt(final ConversationContext context) {
+        public QuestDelayMessagePrompt(final ConversationContext context) {
             super(context);
         }
 
@@ -2173,11 +2145,9 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
 
         @Override
         public @NotNull String getPromptText(final @NotNull ConversationContext context) {
-            if (context.getPlugin() != null) {
-                final QuestsEditorPostOpenStringPromptEvent event
-                        = new QuestsEditorPostOpenStringPromptEvent(context, this);
-                context.getPlugin().getServer().getPluginManager().callEvent(event);
-            }
+            final QuestsEditorPostOpenStringPromptEvent event
+                    = new QuestsEditorPostOpenStringPromptEvent(context, this);
+            plugin.getServer().getPluginManager().callEvent(event);
             
             return ChatColor.YELLOW + getQueryText(context);
         }
@@ -2187,21 +2157,21 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
             if (input != null && !input.equalsIgnoreCase(Lang.get("cmdCancel"))
                     && !input.equalsIgnoreCase(Lang.get("cmdClear"))) {
                 context.setSessionData(stagePrefix + CK.S_DELAY_MESSAGE, input);
-                return new StageMainPrompt(stageNum, context);
+                return new QuestStageMainPrompt(stageNum, context);
             } else if (input != null && input.equalsIgnoreCase(Lang.get("cmdClear"))) {
                 context.setSessionData(stagePrefix + CK.S_DELAY_MESSAGE, null);
                 context.getForWhom().sendRawMessage(ChatColor.YELLOW + Lang.get("stageEditorMessageCleared"));
-                return new StageMainPrompt(stageNum, context);
+                return new QuestStageMainPrompt(stageNum, context);
             } else {
-                return new DelayMessagePrompt(context);
+                return new QuestDelayMessagePrompt(context);
             }
         }
     }
     
 
-    public class StartMessagePrompt extends QuestsEditorStringPrompt {
+    public class QuestStartMessagePrompt extends QuestsEditorStringPrompt {
         
-        public StartMessagePrompt(final ConversationContext context) {
+        public QuestStartMessagePrompt(final ConversationContext context) {
             super(context);
         }
 
@@ -2217,11 +2187,9 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
 
         @Override
         public @NotNull String getPromptText(final @NotNull ConversationContext context) {
-            if (context.getPlugin() != null) {
-                final QuestsEditorPostOpenStringPromptEvent event
-                        = new QuestsEditorPostOpenStringPromptEvent(context, this);
-                context.getPlugin().getServer().getPluginManager().callEvent(event);
-            }
+            final QuestsEditorPostOpenStringPromptEvent event
+                    = new QuestsEditorPostOpenStringPromptEvent(context, this);
+            plugin.getServer().getPluginManager().callEvent(event);
             
             return ChatColor.YELLOW + getQueryText(context);
         }
@@ -2231,20 +2199,20 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
             if (input != null && !input.equalsIgnoreCase(Lang.get("cmdCancel"))
                     && !input.equalsIgnoreCase(Lang.get("cmdClear"))) {
                 context.setSessionData(stagePrefix + CK.S_START_MESSAGE, input);
-                return new StageMainPrompt(stageNum, context);
+                return new QuestStageMainPrompt(stageNum, context);
             } else if (input != null && input.equalsIgnoreCase(Lang.get("cmdClear"))) {
                 context.setSessionData(stagePrefix + CK.S_START_MESSAGE, null);
                 context.getForWhom().sendRawMessage(ChatColor.YELLOW + Lang.get("stageEditorMessageCleared"));
-                return new StageMainPrompt(stageNum, context);
+                return new QuestStageMainPrompt(stageNum, context);
             } else {
-                return new StageMainPrompt(stageNum, context);
+                return new QuestStageMainPrompt(stageNum, context);
             }
         }
     }
 
-    public class CompleteMessagePrompt extends QuestsEditorStringPrompt {
+    public class QuestCompleteMessagePrompt extends QuestsEditorStringPrompt {
         
-        public CompleteMessagePrompt(final ConversationContext context) {
+        public QuestCompleteMessagePrompt(final ConversationContext context) {
             super(context);
         }
 
@@ -2260,11 +2228,9 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
 
         @Override
         public @NotNull String getPromptText(final @NotNull ConversationContext context) {
-            if (context.getPlugin() != null) {
-                final QuestsEditorPostOpenStringPromptEvent event
-                        = new QuestsEditorPostOpenStringPromptEvent(context, this);
-                context.getPlugin().getServer().getPluginManager().callEvent(event);
-            }
+            final QuestsEditorPostOpenStringPromptEvent event
+                    = new QuestsEditorPostOpenStringPromptEvent(context, this);
+            plugin.getServer().getPluginManager().callEvent(event);
             
             return ChatColor.YELLOW + getQueryText(context);
         }
@@ -2274,20 +2240,20 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
             if (input != null && !input.equalsIgnoreCase(Lang.get("cmdCancel"))
                     && !input.equalsIgnoreCase(Lang.get("cmdClear"))) {
                 context.setSessionData(stagePrefix + CK.S_COMPLETE_MESSAGE, input);
-                return new StageMainPrompt(stageNum, context);
+                return new QuestStageMainPrompt(stageNum, context);
             } else if (input != null && input.equalsIgnoreCase(Lang.get("cmdClear"))) {
                 context.setSessionData(stagePrefix + CK.S_COMPLETE_MESSAGE, null);
                 context.getForWhom().sendRawMessage(ChatColor.YELLOW + Lang.get("stageEditorMessageCleared"));
-                return new StageMainPrompt(stageNum, context);
+                return new QuestStageMainPrompt(stageNum, context);
             } else {
-                return new StageMainPrompt(stageNum, context);
+                return new QuestStageMainPrompt(stageNum, context);
             }
         }
     }
 
-    public class StageDeletePrompt extends QuestsEditorStringPrompt {
+    public class QuestStageDeletePrompt extends QuestsEditorStringPrompt {
         
-        public StageDeletePrompt(final ConversationContext context) {
+        public QuestStageDeletePrompt(final ConversationContext context) {
             super(context);
         }
         
@@ -2301,7 +2267,8 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
         public String getTitle(final ConversationContext context) {
             return null;
         }
-        
+
+        @SuppressWarnings("unused")
         public ChatColor getNumberColor(final ConversationContext context, final int number) {
             switch (number) {
             case 1:
@@ -2312,7 +2279,8 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                 return null;
             }
         }
-        
+
+        @SuppressWarnings("unused")
         public String getSelectionText(final ConversationContext context, final int number) {
             switch (number) {
             case 1:
@@ -2331,11 +2299,9 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
 
         @Override
         public @NotNull String getPromptText(final @NotNull ConversationContext context) {
-            if (context.getPlugin() != null) {
-                final QuestsEditorPostOpenStringPromptEvent event
-                        = new QuestsEditorPostOpenStringPromptEvent(context, this);
-                context.getPlugin().getServer().getPluginManager().callEvent(event);
-            }
+            final QuestsEditorPostOpenStringPromptEvent event
+                    = new QuestsEditorPostOpenStringPromptEvent(context, this);
+            plugin.getServer().getPluginManager().callEvent(event);
             
             final StringBuilder text = new StringBuilder(ChatColor.YELLOW + getQueryText(context) + " ("
                     + ChatColor.RED + Lang.get("stageEditorStage") + " " + stageNum + ChatColor.YELLOW + ")\n"
@@ -2350,21 +2316,21 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
         @Override
         public Prompt acceptInput(final @NotNull ConversationContext context, final String input) {
             if (input != null && (input.equalsIgnoreCase("1") || input.equalsIgnoreCase(Lang.get("yesWord")))) {
-                new StageMenuPrompt(context).deleteStage(context, stageNum);
+                new QuestStageMenuPrompt(context).deleteStage(context, stageNum);
                 context.getForWhom().sendRawMessage(ChatColor.YELLOW + Lang.get("stageEditorDeleteSucces"));
-                return new StageMenuPrompt(context);
+                return new QuestStageMenuPrompt(context);
             } else if (input != null && (input.equalsIgnoreCase("2") || input.equalsIgnoreCase(Lang.get("noWord")))) {
-                return new StageMainPrompt(stageNum, context);
+                return new QuestStageMainPrompt(stageNum, context);
             } else {
                 context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("invalidOption"));
-                return new StageDeletePrompt(context);
+                return new QuestStageDeletePrompt(context);
             }
         }
     }
 
-    public class CustomObjectiveModulePrompt extends QuestsEditorStringPrompt {
+    public class QuestCustomObjectiveModulePrompt extends QuestsEditorStringPrompt {
 
-        public CustomObjectiveModulePrompt(final ConversationContext context) {
+        public QuestCustomObjectiveModulePrompt(final ConversationContext context) {
             super(context);
         }
 
@@ -2380,20 +2346,18 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
 
         @Override
         public @NotNull String getPromptText(@NotNull final ConversationContext context) {
-            if (context.getPlugin() != null) {
-                final QuestsEditorPostOpenStringPromptEvent event
-                        = new QuestsEditorPostOpenStringPromptEvent(context, this);
-                context.getPlugin().getServer().getPluginManager().callEvent(event);
-            }
-            if (!(context.getForWhom() instanceof Player)
-                    || !((Quests)context.getPlugin()).getSettings().canClickablePrompts()) {
+            final QuestsEditorPostOpenStringPromptEvent event
+                    = new QuestsEditorPostOpenStringPromptEvent(context, this);
+            plugin.getServer().getPluginManager().callEvent(event);
+
+            if (!(context.getForWhom() instanceof Player) || !plugin.getSettings().canClickablePrompts()) {
                 final StringBuilder text = new StringBuilder(ChatColor.LIGHT_PURPLE + getTitle(context) + "\n");
                 if (plugin.getCustomObjectives().isEmpty()) {
                     text.append(ChatColor.DARK_AQUA).append(ChatColor.UNDERLINE)
                             .append("https://pikamug.gitbook.io/quests/casual/modules").append(ChatColor.RESET)
                             .append("\n");
-                    text.append(ChatColor.DARK_PURPLE).append("(").append(Lang.get("stageEditorNoModules"))
-                            .append(") ");
+                    text.append(ChatColor.RED).append("(").append(Lang.get("stageEditorNoModules")).append(")")
+                            .append("\n");
                 } else {
                     for (final String name : plugin.getCustomObjectives().stream().map(ICustomObjective::getModuleName)
                             .collect(Collectors.toCollection(TreeSet::new))) {
@@ -2410,12 +2374,12 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                 link.setColor(net.md_5.bungee.api.ChatColor.DARK_AQUA);
                 link.setUnderlined(true);
                 line.addExtra(link);
-                line.addExtra(ChatColor.DARK_AQUA + "(" + Lang.get("stageEditorNoModules") + ") ");
+                line.addExtra(ChatColor.RED + "(" + Lang.get("stageEditorNoModules") + ")\n");
             } else {
                 for (final String name : plugin.getCustomObjectives().stream().map(ICustomObjective::getModuleName)
                         .collect(Collectors.toCollection(TreeSet::new))) {
                     final TextComponent click = new TextComponent(ChatColor.DARK_PURPLE + "  - " + name + "\n");
-                    click.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, name));
+                    click.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/quests choice " + name));
                     line.addExtra(click);
                 }
             }
@@ -2447,27 +2411,27 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                     }
                 }
                 if (found != null) {
-                    return new CustomObjectivesPrompt(found, context);
+                    return new QuestCustomObjectivesPrompt(found, context);
                 }
             } else if (input != null && input.equalsIgnoreCase(Lang.get("cmdCancel"))) {
-                return new StageMainPrompt(stageNum, context);
+                return new QuestStageMainPrompt(stageNum, context);
             } else if (input != null && input.equalsIgnoreCase(Lang.get("cmdClear"))) {
                 context.setSessionData(stagePrefix + CK.S_CUSTOM_OBJECTIVES, null);
                 context.setSessionData(stagePrefix + CK.S_CUSTOM_OBJECTIVES_DATA, null);
                 context.setSessionData(stagePrefix + CK.S_CUSTOM_OBJECTIVES_DATA_TEMP, null);
                 context.getForWhom().sendRawMessage(ChatColor.YELLOW + Lang.get("stageEditorCustomCleared"));
-                return new StageMainPrompt(stageNum, context);
+                return new QuestStageMainPrompt(stageNum, context);
             }
             context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("stageEditorModuleNotFound"));
-            return new CustomObjectiveModulePrompt(context);
+            return new QuestCustomObjectiveModulePrompt(context);
         }
     }
 
-    public class CustomObjectivesPrompt extends QuestsEditorStringPrompt {
+    public class QuestCustomObjectivesPrompt extends QuestsEditorStringPrompt {
 
         private final String moduleName;
 
-        public CustomObjectivesPrompt(final String moduleName, final ConversationContext context) {
+        public QuestCustomObjectivesPrompt(final String moduleName, final ConversationContext context) {
             super(context);
             this.moduleName = moduleName;
         }
@@ -2488,20 +2452,17 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
 
         @Override
         public @NotNull String getPromptText(final @NotNull ConversationContext context) {
-            if (context.getPlugin() != null) {
-                final QuestsEditorPostOpenStringPromptEvent event
-                        = new QuestsEditorPostOpenStringPromptEvent(context, this);
-                context.getPlugin().getServer().getPluginManager().callEvent(event);
-            }
-            if (!(context.getForWhom() instanceof Player)
-                    || !((Quests)context.getPlugin()).getSettings().canClickablePrompts()) {
+            final QuestsEditorPostOpenStringPromptEvent event
+                    = new QuestsEditorPostOpenStringPromptEvent(context, this);
+            plugin.getServer().getPluginManager().callEvent(event);
+
+            if (!(context.getForWhom() instanceof Player) || !plugin.getSettings().canClickablePrompts()) {
                 final StringBuilder text = new StringBuilder(ChatColor.LIGHT_PURPLE + "- " + getTitle(context)
                         + " -\n");
                 if (plugin.getCustomObjectives().isEmpty()) {
                     text.append(ChatColor.DARK_AQUA).append(ChatColor.UNDERLINE)
                             .append("https://pikamug.gitbook.io/quests/casual/modules\n");
-                    text.append(ChatColor.DARK_PURPLE).append("(").append(Lang.get("stageEditorNoModules"))
-                            .append(") ");
+                    text.append(ChatColor.RED).append("(").append(Lang.get("stageEditorNoModules")).append(")\n");
                 } else {
                     for (final ICustomObjective co : plugin.getCustomObjectives()) {
                         if (co.getModuleName().equals(moduleName)) {
@@ -2519,13 +2480,14 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                 link.setColor(net.md_5.bungee.api.ChatColor.DARK_AQUA);
                 link.setUnderlined(true);
                 line.addExtra(link);
-                line.addExtra(ChatColor.DARK_AQUA + "(" + Lang.get("stageEditorNoModules") + ") ");
+                line.addExtra(ChatColor.RED + "(" + Lang.get("stageEditorNoModules") + ")\n");
             } else {
                 for (final ICustomObjective co : plugin.getCustomObjectives()) {
                     if (co.getModuleName().equals(moduleName)) {
                         final TextComponent click = new TextComponent(ChatColor.DARK_PURPLE + "  - " + co.getName()
                                 + "\n");
-                        click.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, co.getName()));
+                        click.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/quests choice "
+                                + co.getName()));
                         line.addExtra(click);
                     }
                 }
@@ -2572,7 +2534,7 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                             // Already added, so inform user
                             context.getForWhom().sendRawMessage(ChatColor.RED
                                     + Lang.get("stageEditorCustomAlreadyAdded"));
-                            return new CustomObjectivesPrompt(moduleName, context);
+                            return new QuestCustomObjectivesPrompt(moduleName, context);
                         }
                     } else {
                         // The custom objective hasn't been added yet, so let's do it
@@ -2587,16 +2549,16 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                     }
                     // Send user to the count prompt / custom data prompt if there is any needed
                     if (found.canShowCount()) {
-                        return new CustomObjectiveCountPrompt();
+                        return new QuestCustomObjectiveCountPrompt();
                     }
                     if (!found.getData().isEmpty()) {
                         context.setSessionData(stagePrefix + CK.S_CUSTOM_OBJECTIVES_DATA_DESCRIPTIONS, found
                                 .getDescriptions());
-                        return new ObjectiveCustomDataListPrompt();
+                        return new QuestObjectiveCustomDataListPrompt();
                     }
                 } else {
                     context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("stageEditorModuleNotFound"));
-                    return new CustomObjectivesPrompt(moduleName, context);
+                    return new QuestCustomObjectivesPrompt(moduleName, context);
                 }
             } else if (input != null && input.equalsIgnoreCase(Lang.get("cmdClear"))) {
                 context.setSessionData(stagePrefix + CK.S_CUSTOM_OBJECTIVES, null);
@@ -2604,11 +2566,11 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                 context.setSessionData(stagePrefix + CK.S_CUSTOM_OBJECTIVES_DATA_TEMP, null);
                 context.getForWhom().sendRawMessage(ChatColor.YELLOW + Lang.get("stageEditorCustomCleared"));
             }
-            return new StageMainPrompt(stageNum, context);
+            return new QuestStageMainPrompt(stageNum, context);
         }
     }
 
-    private class CustomObjectiveCountPrompt extends StringPrompt {
+    private class QuestCustomObjectiveCountPrompt extends StringPrompt {
 
         @Override
         public @NotNull String getPromptText(final ConversationContext context) {
@@ -2655,21 +2617,21 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                     if (found != null && !found.getData().isEmpty()) {
                         context.setSessionData(stagePrefix
                                 + CK.S_CUSTOM_OBJECTIVES_DATA_DESCRIPTIONS, found.getDescriptions());
-                        return new ObjectiveCustomDataListPrompt();
+                        return new QuestObjectiveCustomDataListPrompt();
                     } else {
-                        return new StageMainPrompt(stageNum, context);
+                        return new QuestStageMainPrompt(stageNum, context);
                     }
                 }
             } catch (final NumberFormatException e) {
                 context.getForWhom().sendRawMessage(ChatColor.RED + Lang.get("reqNotANumber")
                         .replace("<input>", input));
-                return new CustomObjectiveCountPrompt();
+                return new QuestCustomObjectiveCountPrompt();
             }
-            return new StageMainPrompt(stageNum, context);
+            return new QuestStageMainPrompt(stageNum, context);
         }
     }
 
-    private class ObjectiveCustomDataListPrompt extends StringPrompt {
+    private class QuestObjectiveCustomDataListPrompt extends StringPrompt {
 
         @SuppressWarnings("unchecked")
         @Override
@@ -2735,7 +2697,7 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                 }
                 if (found == null) {
                     plugin.getLogger().severe("Could not find custom objective following input: " + input);
-                    return new ObjectiveCustomDataListPrompt();
+                    return new QuestObjectiveCustomDataListPrompt();
                 }
                 final LinkedList<Entry<String, Object>> dataMapList = found.getData();
 
@@ -2743,10 +2705,10 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                 try {
                     numInput = Integer.parseInt(input);
                 } catch (final NumberFormatException nfe) {
-                    return new ObjectiveCustomDataListPrompt();
+                    return new QuestObjectiveCustomDataListPrompt();
                 }
                 if (numInput < 1 || numInput > dataMapList.size() + 1) {
-                    return new ObjectiveCustomDataListPrompt();
+                    return new QuestObjectiveCustomDataListPrompt();
                 }
                 if (numInput < dataMapList.size() + 1) {
                     final LinkedList<String> dataMapKeys = new LinkedList<>();
@@ -2756,7 +2718,7 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                     // Collections.sort(dataMapKeys);
                     final String selectedKey = dataMapKeys.get(numInput - 1);
                     context.setSessionData(stagePrefix + CK.S_CUSTOM_OBJECTIVES_DATA_TEMP, selectedKey);
-                    return new ObjectiveCustomDataPrompt();
+                    return new QuestObjectiveCustomDataPrompt();
                 } else {
                     final LinkedList<Entry<String, Object>> dataMaps
                             = (LinkedList<Entry<String, Object>>) context.getSessionData(stagePrefix
@@ -2764,19 +2726,19 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                     if (dataMaps != null) {
                         for (final Entry<String, Object> dataMap : dataMaps) {
                             if (dataMap.getValue() == null) {
-                                return new ObjectiveCustomDataListPrompt();
+                                return new QuestObjectiveCustomDataListPrompt();
                             }
                         }
                     }
                     context.setSessionData(stagePrefix + CK.S_CUSTOM_OBJECTIVES_DATA_DESCRIPTIONS, null);
-                    return new StageMainPrompt(stageNum, context);
+                    return new QuestStageMainPrompt(stageNum, context);
                 }
             }
-            return new StageMainPrompt(stageNum, context);
+            return new QuestStageMainPrompt(stageNum, context);
         }
     }
 
-    private class ObjectiveCustomDataPrompt extends StringPrompt {
+    private class QuestObjectiveCustomDataPrompt extends StringPrompt {
 
         @Override
         public @NotNull String getPromptText(final ConversationContext context) {
@@ -2791,7 +2753,7 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
                 text += ChatColor.GOLD + descriptions.get(temp) + "\n";
             }
             String msg = Lang.get("stageEditorCustomDataPrompt");
-            msg = msg.replace("<data>", ChatColor.BOLD + temp + ChatColor.RESET + ChatColor.YELLOW);
+            msg = msg.replace("<data>", ChatColor.GOLD + temp + ChatColor.YELLOW);
             text += ChatColor.YELLOW + msg;
             return text;
         }
@@ -2816,7 +2778,7 @@ public class StageMainPrompt extends QuestsEditorNumericPrompt {
             }
             context.setSessionData(stagePrefix + CK.S_CUSTOM_OBJECTIVES_DATA, promptList);
             context.setSessionData(stagePrefix + CK.S_CUSTOM_OBJECTIVES_DATA_TEMP, null);
-            return new ObjectiveCustomDataListPrompt();
+            return new QuestObjectiveCustomDataListPrompt();
         }
     }
 }

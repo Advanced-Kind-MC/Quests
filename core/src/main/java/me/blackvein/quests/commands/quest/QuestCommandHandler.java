@@ -28,6 +28,8 @@ import org.bukkit.inventory.ItemStack;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 public class QuestCommandHandler {
 
@@ -52,7 +54,7 @@ public class QuestCommandHandler {
                                 final String msg = Lang.get(player, "questObjectivesTitle")
                                         .replace("<quest>", q.getName());
                                 Lang.send(player, ChatColor.GOLD + msg);
-                                plugin.showObjectives(q, quester, false);
+                                quester.showCurrentObjectives(q, quester, false);
                             } else {
                                 final long time = plugin.getQuester(player.getUniqueId()).getStageTime(q);
                                 String msg = ChatColor.YELLOW + "(" + Lang.get(player, "delay") + ") " + ChatColor.RED
@@ -116,7 +118,7 @@ public class QuestCommandHandler {
                 cs.sendMessage(" ");
                 if (q.getNpcStart() != null) {
                     String msg = Lang.get("speakTo");
-                    msg = msg.replace("<npc>", q.getNpcStart().getName());
+                    msg = msg.replace("<npc>", q.getNpcStartName());
                     cs.sendMessage(ChatColor.YELLOW + msg);
                 } else {
                     cs.sendMessage(ChatColor.YELLOW + q.getDescription());
@@ -155,17 +157,15 @@ public class QuestCommandHandler {
                                         + ChatColor.RESET + "" + ChatColor.DARK_GREEN + " " + Lang.get("heroesClass"));
                             }
                         }
-                        if (!reqs.getMcmmoSkills().isEmpty()) {
-                            for (final String skill : reqs.getMcmmoSkills()) {
-                                final int level = plugin.getDependencies().getMcmmoSkillLevel(Quests
-                                        .getMcMMOSkill(skill), player.getName());
-                                final int req = reqs.getMcmmoAmounts().get(reqs.getMcmmoSkills().indexOf(skill));
-                                final String skillName = MiscUtil.getCapitalized(skill);
-                                if (level >= req) {
-                                    cs.sendMessage(ChatColor.GREEN + skillName + " " + Lang.get("mcMMOLevel") + " " + req);
-                                } else {
-                                    cs.sendMessage(ChatColor.RED + skillName + " " + Lang.get("mcMMOLevel") + " " + req);
-                                }
+                        for (final String skill : reqs.getMcmmoSkills()) {
+                            final int level = plugin.getDependencies().getMcmmoSkillLevel(Quests
+                                    .getMcMMOSkill(skill), player.getName());
+                            final int req = reqs.getMcmmoAmounts().get(reqs.getMcmmoSkills().indexOf(skill));
+                            final String skillName = MiscUtil.getCapitalized(skill);
+                            if (level >= req) {
+                                cs.sendMessage(ChatColor.GREEN + skillName + " " + Lang.get("mcMMOLevel") + " " + req);
+                            } else {
+                                cs.sendMessage(ChatColor.RED + skillName + " " + Lang.get("mcMMOLevel") + " " + req);
                             }
                         }
                         if (reqs.getQuestPoints() != 0) {
@@ -191,39 +191,35 @@ public class QuestCommandHandler {
                                         .currencyNameSingular()));
                             }
                         }
-                        if (!reqs.getItems().isEmpty()) {
-                            for (final ItemStack is : reqs.getItems()) {
-                                if (plugin.getQuester(player.getUniqueId()).hasItem(is)) {
-                                    cs.sendMessage(ChatColor.GRAY + "- " + ChatColor.GREEN + ItemUtil.getString(is));
-                                } else {
-                                    cs.sendMessage(ChatColor.GRAY + "- " + ChatColor.RED + ItemUtil.getString(is));
-                                }
+                        for (final ItemStack is : reqs.getItems()) {
+                            if (plugin.getQuester(player.getUniqueId()).hasItem(is)) {
+                                cs.sendMessage(ChatColor.GRAY + "- " + ChatColor.GREEN + ItemUtil.getString(is));
+                            } else {
+                                cs.sendMessage(ChatColor.GRAY + "- " + ChatColor.RED + ItemUtil.getString(is));
                             }
                         }
-                        if (!reqs.getNeededQuests().isEmpty()) {
-                            for (final IQuest quest : reqs.getNeededQuests()) {
-                                if (quester.getCompletedQuestsTemp().contains(quest)) {
-                                    cs.sendMessage(ChatColor.GRAY + "- " + ChatColor.GREEN + Lang.get("complete") + " "
-                                            + ChatColor.ITALIC + quest.getName());
-                                } else {
-                                    cs.sendMessage(ChatColor.GRAY + "- " + ChatColor.RED + Lang.get("complete") + " "
-                                            + ChatColor.ITALIC + quest.getName());
-                                }
+                        for (IQuest quest : quester.getCompletedQuestsTemp()) {
+                            if (reqs.getNeededQuestIds().contains(quest.getId())) {
+                                cs.sendMessage(ChatColor.GRAY + "- " + ChatColor.GREEN + Lang.get("complete") + " "
+                                        + ChatColor.ITALIC + quest.getName());
+                            } else {
+                                cs.sendMessage(ChatColor.GRAY + "- " + ChatColor.RED + Lang.get("complete") + " "
+                                        + ChatColor.ITALIC + quest.getName());
                             }
                         }
-                        if (!reqs.getBlockQuests().isEmpty()) {
-                            for (final IQuest quest : reqs.getBlockQuests()) {
-                                if (quester.getCompletedQuestsTemp().contains(quest)) {
-                                    String msg = Lang.get("haveCompleted");
-                                    msg = msg.replace("<quest>", ChatColor.ITALIC + "" + ChatColor.DARK_PURPLE
-                                            + quest.getName() + ChatColor.RED);
-                                    cs.sendMessage(ChatColor.GRAY + "- " + ChatColor.RED + msg);
-                                } else {
-                                    String msg = Lang.get("cannotComplete");
-                                    msg = msg.replace("<quest>", ChatColor.ITALIC + "" + ChatColor.DARK_PURPLE
-                                            + quest.getName() + ChatColor.GREEN);
-                                    cs.sendMessage(ChatColor.GRAY + "- " + ChatColor.GREEN + msg);
-                                }
+                        final Map<String, String> completed = quester.getCompletedQuestsTemp().stream()
+                                .collect(Collectors.toMap(IQuest::getId, IQuest::getName));
+                        for (final String questId : reqs.getBlockQuestIds()) {
+                            if (completed.containsKey(questId)) {
+                                String msg = Lang.get("haveCompleted");
+                                msg = msg.replace("<quest>", ChatColor.ITALIC + "" + ChatColor.DARK_PURPLE
+                                        + completed.get(questId) + ChatColor.RED);
+                                cs.sendMessage(ChatColor.GRAY + "- " + ChatColor.RED + msg);
+                            } else {
+                                String msg = Lang.get("cannotComplete");
+                                msg = msg.replace("<quest>", ChatColor.ITALIC + "" + ChatColor.DARK_PURPLE
+                                        + plugin.getQuestById(questId).getName() + ChatColor.GREEN);
+                                cs.sendMessage(ChatColor.GRAY + "- " + ChatColor.GREEN + msg);
                             }
                         }
                     }

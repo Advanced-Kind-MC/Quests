@@ -16,13 +16,14 @@ import com.alessiodp.parties.api.interfaces.Party;
 import com.alessiodp.parties.api.interfaces.PartyPlayer;
 import com.gmail.nossr50.datatypes.skills.SkillType;
 import com.gmail.nossr50.util.player.UserManager;
+import io.github.znetworkw.znpcservers.npc.NPC;
 import me.blackvein.quests.conditions.ICondition;
 import me.blackvein.quests.config.ISettings;
 import me.blackvein.quests.convo.misc.QuestAbandonPrompt;
 import me.blackvein.quests.dependencies.IDependencies;
-import me.blackvein.quests.events.quest.QuestQuitEvent;
-import me.blackvein.quests.module.ICustomObjective;
+import me.blackvein.quests.entity.CountableMob;
 import me.blackvein.quests.enums.ObjectiveType;
+import me.blackvein.quests.events.quest.QuestQuitEvent;
 import me.blackvein.quests.events.quest.QuestTakeEvent;
 import me.blackvein.quests.events.quester.QuesterPostStartQuestEvent;
 import me.blackvein.quests.events.quester.QuesterPostUpdateObjectiveEvent;
@@ -30,6 +31,8 @@ import me.blackvein.quests.events.quester.QuesterPreOpenGUIEvent;
 import me.blackvein.quests.events.quester.QuesterPreStartQuestEvent;
 import me.blackvein.quests.events.quester.QuesterPreUpdateObjectiveEvent;
 import me.blackvein.quests.item.QuestJournal;
+import me.blackvein.quests.module.ICustomObjective;
+import me.blackvein.quests.nms.ActionBarProvider;
 import me.blackvein.quests.nms.TitleProvider;
 import me.blackvein.quests.player.IQuester;
 import me.blackvein.quests.quests.BukkitObjective;
@@ -38,7 +41,6 @@ import me.blackvein.quests.quests.IStage;
 import me.blackvein.quests.quests.Objective;
 import me.blackvein.quests.quests.Planner;
 import me.blackvein.quests.quests.Requirements;
-import me.blackvein.quests.storage.Storage;
 import me.blackvein.quests.tasks.StageTimer;
 import me.blackvein.quests.util.ConfigUtil;
 import me.blackvein.quests.util.InventoryUtil;
@@ -47,9 +49,9 @@ import me.blackvein.quests.util.Lang;
 import me.blackvein.quests.util.MiscUtil;
 import me.blackvein.quests.util.RomanNumeral;
 import me.clip.placeholderapi.PlaceholderAPI;
+import me.pikamug.localelib.LocaleManager;
 import me.pikamug.unite.api.objects.PartyProvider;
 import net.citizensnpcs.api.CitizensAPI;
-import net.citizensnpcs.api.npc.NPC;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.DyeColor;
@@ -61,15 +63,14 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.conversations.ConversationFactory;
 import org.bukkit.enchantments.Enchantment;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.EnchantmentStorageMeta;
-import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.material.Crops;
 import org.jetbrains.annotations.NotNull;
 
@@ -82,6 +83,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
@@ -510,7 +512,7 @@ public class Quester implements IQuester {
         }
         final int index = getJournalIndex();
         if (index != -1) {
-            final QuestJournal journal = new QuestJournal(this);
+            final QuestJournal journal = new QuestJournal(plugin, this);
             getPlayer().getInventory().setItem(index, journal.toItemStack());
         }
     }
@@ -535,12 +537,12 @@ public class Quester implements IQuester {
             if (getPlayer() != null) {
                 if (!getPlayer().isConversing()) {
                     setQuestIdToTake(quest.getId());
-                    final String s = ChatColor.GOLD + Lang.get("questObjectivesTitle")
-                            .replace("<quest>", quest.getName()) + "\n" + ChatColor.RESET + quest.getDescription();
+                    final String s = ChatColor.GOLD + ConfigUtil.parseString(Lang.get("questObjectivesTitle")
+                            + "\n" + ChatColor.RESET + quest.getDescription(), quest, getPlayer());
                     for (final String msg : s.split("<br>")) {
                         sendMessage(msg);
                     }
-                    if (!plugin.getSettings().canAskConfirmation()) {
+                    if (!plugin.getSettings().canConfirmAccept()) {
                         takeQuest(quest, false);
                     } else {
                         plugin.getConversationFactory().buildConversation(getPlayer()).begin();
@@ -565,8 +567,33 @@ public class Quester implements IQuester {
         if (quest == null) {
             return false;
         }
-        if (getCurrentQuestsTemp().size() >= plugin.getSettings().getMaxQuests() && plugin.getSettings().getMaxQuests()
-                > 0) {
+        if (!plugin.getSettings().canAllowCommandsForNpcQuests() && quest.getNpcStart() != null
+                && getPlayer().getLocation().getWorld() != null) {
+            final UUID uuid = quest.getNpcStart();
+            Entity npc = null;
+            if (plugin.getDependencies().getCitizens() != null
+                    && plugin.getDependencies().getCitizens().getNPCRegistry().getByUniqueId(uuid) != null) {
+                npc = plugin.getDependencies().getCitizens().getNPCRegistry().getByUniqueId(uuid).getEntity();
+            } else if (plugin.getDependencies().getZnpcs() != null
+                    && plugin.getDependencies().getZnpcsUuids().contains(uuid)) {
+                final Optional<NPC> opt = NPC.all().stream().filter(npc1 -> npc1.getUUID().equals(uuid)).findAny();
+                if (opt.isPresent()) {
+                    npc = (Entity) opt.get().getBukkitEntity();
+                }
+            }
+            if (npc != null && npc.getLocation().getWorld() != null && npc.getLocation().getWorld().getName()
+                    .equals(getPlayer().getLocation().getWorld().getName())
+                    && npc.getLocation().distance(getPlayer().getLocation()) > 6.0) {
+                if (giveReason) {
+                    final String msg = Lang.get(getPlayer(), "mustSpeakTo")
+                            .replace("<npc>", ChatColor.DARK_PURPLE + npc.getName() + ChatColor.YELLOW);
+                    sendMessage(ChatColor.YELLOW + msg);
+                }
+                return false;
+            }
+        }
+        if (getCurrentQuestsTemp().size() >= plugin.getSettings().getMaxQuests()
+                && plugin.getSettings().getMaxQuests() > 0) {
             if (giveReason) {
                 final String msg = Lang.get(getPlayer(), "questMaxAllowed").replace("<number>",
                         String.valueOf(plugin.getSettings().getMaxQuests()));
@@ -583,20 +610,6 @@ public class Quester implements IQuester {
             if (giveReason) {
                 final String msg = Lang.get(getPlayer(), "questAlreadyCompleted")
                         .replace("<quest>", ChatColor.DARK_PURPLE + quest.getName() + ChatColor.YELLOW);
-                sendMessage(ChatColor.YELLOW + msg);
-            }
-            return false;
-        } else if (plugin.getDependencies().getCitizens() != null
-                && !plugin.getSettings().canAllowCommandsForNpcQuests()
-                && quest.getNpcStart() != null && quest.getNpcStart().getEntity() != null
-                && quest.getNpcStart().getEntity().getLocation().getWorld() != null
-                && getPlayer().getLocation().getWorld() != null
-                && quest.getNpcStart().getEntity().getLocation().getWorld().getName().equals(
-                getPlayer().getLocation().getWorld().getName())
-                && quest.getNpcStart().getEntity().getLocation().distance(getPlayer().getLocation()) > 6.0) {
-            if (giveReason) {
-                final String msg = Lang.get(getPlayer(), "mustSpeakTo").replace("<npc>", ChatColor.DARK_PURPLE
-                        + quest.getNpcStart().getName() + ChatColor.YELLOW);
                 sendMessage(ChatColor.YELLOW + msg);
             }
             return false;
@@ -628,6 +641,103 @@ public class Quester implements IQuester {
         }
         return true;
     }
+
+    /**
+     * Check if Quester is too early or late for a planned quest<p>
+     *
+     * For player cooldown, use {@link #canAcceptOffer(IQuest, boolean)} instead
+     *
+     * @param quest The quest to check
+     * @param giveReason Whether to inform Quester of unpunctuality
+     * @return true if on time
+     */
+    public boolean isOnTime(final IQuest quest, final boolean giveReason) {
+        final Planner pln = quest.getPlanner();
+        final long currentTime = System.currentTimeMillis();
+        final long start = pln.getStartInMillis(); // Start time in milliseconds since UTC epoch
+        final long end = pln.getEndInMillis(); // End time in milliseconds since UTC epoch
+        final long duration = end - start; // How long the quest can be active for
+        final long repeat = pln.getRepeat(); // Length to wait in-between start times
+        if (start != -1) {
+            if (currentTime < start) {
+                if (giveReason) {
+                    String early = Lang.get("plnTooEarly");
+                    early = early.replace("<quest>", ChatColor.AQUA + quest.getName() + ChatColor.YELLOW);
+                    early = early.replace("<time>", ChatColor.RED
+                            + MiscUtil.getTime(start - currentTime) + ChatColor.YELLOW);
+                    sendMessage(ChatColor.YELLOW + early);
+                }
+                return false;
+            }
+        }
+        if (end != -1 && repeat == -1) {
+            if (currentTime > end) {
+                if (giveReason) {
+                    String late = Lang.get("plnTooLate");
+                    late = late.replace("<quest>", ChatColor.AQUA + quest.getName() + ChatColor.RED);
+                    late = late.replace("<time>", ChatColor.DARK_PURPLE
+                            + MiscUtil.getTime(currentTime - end) + ChatColor.RED);
+                    sendMessage(ChatColor.RED + late);
+                }
+                return false;
+            }
+        }
+        if (repeat != -1 && start != -1 && end != -1) {
+            // Ensure that we're past the initial duration
+            if (currentTime > end) {
+                final int maxSize = 2;
+                final LinkedHashMap<Long, Long> mostRecent = new LinkedHashMap<Long, Long>() {
+                    private static final long serialVersionUID = 3046838061019897713L;
+
+                    @Override
+                    protected boolean removeEldestEntry(final Map.Entry<Long, Long> eldest) {
+                        return size() > maxSize;
+                    }
+                };
+
+                // Get last completed time
+                long completedTime = 0L;
+                if (getCompletedTimes().containsKey(quest)) {
+                    completedTime = getCompletedTimes().get(quest);
+                }
+                long completedEnd = 0L;
+
+                // Store last completed, upcoming, and most recent periods of activity
+                long nextStart = start;
+                long nextEnd = end;
+                while (currentTime >= nextStart) {
+                    if (nextStart < completedTime && completedTime < nextEnd) {
+                        completedEnd = nextEnd;
+                    }
+                    nextStart += repeat;
+                    nextEnd = nextStart + duration;
+                    mostRecent.put(nextStart, nextEnd);
+                }
+
+                // Check whether the quest is currently active
+                boolean active = false;
+                for (final Entry<Long, Long> startEnd : mostRecent.entrySet()) {
+                    if (startEnd.getKey() <= currentTime && currentTime < startEnd.getValue()) {
+                        active = true;
+                        break;
+                    }
+                }
+
+                // If quest is not active, or new period of activity should override player cooldown
+                if (!active || (quest.getPlanner().getOverride() && completedEnd > 0L && currentTime < completedEnd)) {
+                    if (giveReason) {
+                        final String early = Lang.get("plnTooEarly")
+                                .replace("<quest>", ChatColor.AQUA + quest.getName() + ChatColor.YELLOW)
+                                .replace("<time>", ChatColor.DARK_PURPLE
+                                        + MiscUtil.getTime((completedEnd) - currentTime) + ChatColor.YELLOW);
+                        sendMessage(ChatColor.YELLOW + early);
+                    }
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
     
     /**
      * Start a quest for this Quester
@@ -635,7 +745,6 @@ public class Quester implements IQuester {
      * @param quest The quest to start
      * @param ignoreRequirements Whether to ignore Requirements
      */
-    @SuppressWarnings("deprecation")
     public void takeQuest(final IQuest quest, final boolean ignoreRequirements) {
         if (quest == null) {
             return;
@@ -647,86 +756,8 @@ public class Quester implements IQuester {
         }
         final OfflinePlayer offlinePlayer = getOfflinePlayer();
         if (offlinePlayer.isOnline()) {
-            final Planner pln = quest.getPlanner();
-            final long currentTime = System.currentTimeMillis();
-            final long start = pln.getStartInMillis(); // Start time in milliseconds since UTC epoch
-            final long end = pln.getEndInMillis(); // End time in milliseconds since UTC epoch
-            final long duration = end - start; // How long the quest can be active for
-            final long repeat = pln.getRepeat(); // Length to wait in-between start times
-            if (start != -1) {
-                if (currentTime < start) {
-                    String early = Lang.get("plnTooEarly");
-                    early = early.replace("<quest>", ChatColor.AQUA + quest.getName() + ChatColor.YELLOW);
-                    early = early.replace("<time>", ChatColor.RED
-                            + MiscUtil.getTime(start - currentTime) + ChatColor.YELLOW);
-                    sendMessage(ChatColor.YELLOW + early);
-                    return;
-                }
-            }
-            if (end != -1 && repeat == -1) {
-                if (currentTime > end) {
-                    String late = Lang.get("plnTooLate");
-                    late = late.replace("<quest>", ChatColor.AQUA + quest.getName() + ChatColor.RED);
-                    late = late.replace("<time>", ChatColor.DARK_PURPLE
-                            + MiscUtil.getTime(currentTime - end) + ChatColor.RED);
-                    sendMessage(ChatColor.RED + late);
-                    return;
-                }
-            }
-            if (repeat != -1 && start != -1 && end != -1) {
-                // Ensure that we're past the initial duration
-                if (currentTime > end) {
-                    final int maxSize = 2;
-                    final LinkedHashMap<Long, Long> mostRecent = new LinkedHashMap<Long, Long>() {
-                        private static final long serialVersionUID = 3046838061019897713L;
-
-                        @Override
-                        protected boolean removeEldestEntry(final Map.Entry<Long, Long> eldest) {
-                            return size() > maxSize;
-                        }
-                    };
-                    
-                    // Get last completed time
-                    long completedTime = 0L;
-                    if (getCompletedTimes().containsKey(quest)) {
-                        completedTime = getCompletedTimes().get(quest);
-                    }
-                    long completedEnd = 0L;
-                    
-                    // Store last completed, upcoming, and most recent periods of activity
-                    long nextStart = start;
-                    long nextEnd = end;
-                    while (currentTime >= nextStart) {
-                        if (nextStart < completedTime && completedTime < nextEnd) {
-                            completedEnd = nextEnd;
-                        }
-                        nextStart += repeat;
-                        nextEnd = nextStart + duration;
-                        mostRecent.put(nextStart, nextEnd);
-                    }
-                    
-                    // Check whether the quest is currently active
-                    boolean active = false;
-                    for (final Entry<Long, Long> startEnd : mostRecent.entrySet()) {
-                        if (startEnd.getKey() <= currentTime && currentTime < startEnd.getValue()) {
-                            active = true;
-                            break;
-                        }
-                    }
-                    
-                    // If quest is not active, or new period of activity should override player cooldown, inform user
-                    if (!active || (quest.getPlanner().getOverride() && completedEnd > 0L
-                            && currentTime < (completedEnd /*+ repeat*/))) {
-                        if (getPlayer().isOnline()) {
-                            final String early = Lang.get("plnTooEarly")
-                                .replace("<quest>", ChatColor.AQUA + quest.getName() + ChatColor.YELLOW)
-                                .replace("<time>", ChatColor.DARK_PURPLE
-                                + MiscUtil.getTime((completedEnd /*+ repeat*/) - currentTime) + ChatColor.YELLOW);
-                            sendMessage(ChatColor.YELLOW + early);
-                        }
-                        return;
-                    }
-                }
+            if (!isOnTime(quest, true)) {
+                return;
             }
         }
         if (quest.testRequirements(offlinePlayer) || ignoreRequirements) {
@@ -781,77 +812,12 @@ public class Quester implements IQuester {
                 final Player p = getPlayer();
                 final String title = Lang.get(p, "objectives").replace("<quest>", quest.getName());
                 sendMessage(ChatColor.GOLD + title);
-                plugin.showObjectives(quest, this, false);
+                showCurrentObjectives(quest, this, false);
                 final String stageStartMessage = stage.getStartMessage();
                 if (stageStartMessage != null) {
                     p.sendMessage(ConfigUtil.parseStringWithPossibleLineBreaks(stageStartMessage, quest, getPlayer()));
                 }
-                final ICondition c = stage.getCondition();
-                if (c != null && stage.getObjectiveOverrides().isEmpty()) {
-                    sendMessage(ChatColor.LIGHT_PURPLE + Lang.get("stageEditorConditions"));
-                    if (!c.getEntitiesWhileRiding().isEmpty()) {
-                        final StringBuilder msg = new StringBuilder("- " + Lang.get("conditionEditorRideEntity"));
-                        for (final String e : c.getEntitiesWhileRiding()) {
-                            msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(e);
-                        }
-                        sendMessage(ChatColor.YELLOW + msg.toString());
-                    } else if (!c.getNpcsWhileRiding().isEmpty()) {
-                        final StringBuilder msg = new StringBuilder("- " + Lang.get("conditionEditorRideNPC"));
-                        for (final int i : c.getNpcsWhileRiding()) {
-                            if (plugin.getDependencies().getCitizens() != null) {
-                                msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(CitizensAPI.getNPCRegistry()
-                                        .getById(i).getName());
-                            } else {
-                                msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(i);
-                            }
-                        }
-                        sendMessage(ChatColor.YELLOW + msg.toString());
-                    } else if (!c.getPermissions().isEmpty()) {
-                        final StringBuilder msg = new StringBuilder("- " + Lang.get("conditionEditorPermissions"));
-                        for (final String e : c.getPermissions()) {
-                            msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(e);
-                        }
-                        sendMessage(ChatColor.YELLOW + msg.toString());
-                    } else if (!c.getItemsWhileHoldingMainHand().isEmpty()) {
-                        final StringBuilder msg = new StringBuilder("- " + Lang.get("conditionEditorItemsInMainHand"));
-                        for (final ItemStack is : c.getItemsWhileHoldingMainHand()) {
-                            msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(ItemUtil.getPrettyItemName(is
-                                    .getType().name()));
-                        }
-                        sendMessage(ChatColor.YELLOW + msg.toString());
-                    } else if (!c.getWorldsWhileStayingWithin().isEmpty()) {
-                        final StringBuilder msg = new StringBuilder("- " + Lang.get("conditionEditorStayWithinWorld"));
-                        for (final String w : c.getWorldsWhileStayingWithin()) {
-                            msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(w);
-                        }
-                        sendMessage(ChatColor.YELLOW + msg.toString());
-                    } else if (!c.getBiomesWhileStayingWithin().isEmpty()) {
-                        final StringBuilder msg = new StringBuilder("- " + Lang.get("conditionEditorStayWithinBiome"));
-                        for (final String b : c.getBiomesWhileStayingWithin()) {
-                            msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(MiscUtil
-                                    .snakeCaseToUpperCamelCase(b));
-                        }
-                        sendMessage(ChatColor.YELLOW + msg.toString());
-                    } else if (!c.getRegionsWhileStayingWithin().isEmpty()) {
-                        final StringBuilder msg = new StringBuilder("- " + Lang.get("conditionEditorStayWithinRegion"));
-                        for (final String r : c.getRegionsWhileStayingWithin()) {
-                            msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(r);
-                        }
-                        sendMessage(ChatColor.YELLOW + msg.toString());
-                    } else if (!c.getPlaceholdersCheckIdentifier().isEmpty()) {
-                        final StringBuilder msg = new StringBuilder("- " + Lang.get("conditionEditorCheckPlaceholder"));
-                        int index = 0;
-                        for (final String r : c.getPlaceholdersCheckIdentifier()) {
-                            if (c.getPlaceholdersCheckValue().size() > index) {
-                                msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(r).append(ChatColor.GRAY)
-                                        .append(" = ").append(ChatColor.AQUA).append(c.getPlaceholdersCheckValue()
-                                        .get(index));
-                            }
-                            index++;
-                        }
-                        sendMessage(ChatColor.YELLOW + msg.toString());
-                    }
-                }
+                plugin.showConditions(quest, this);
             }
             if (quest.getInitialAction() != null) {
                 quest.getInitialAction().fire(this, quest);
@@ -866,7 +832,7 @@ public class Quester implements IQuester {
             if (offlinePlayer.isOnline()) {
                 sendMessage(ChatColor.DARK_AQUA + Lang.get("requirements"));
                 for (final String s : getCurrentRequirements(quest, false)) {
-                    sendMessage(ChatColor.GRAY + "- " + s);
+                    sendMessage("- " + ChatColor.GRAY + s);
                 }
             }
         }
@@ -909,7 +875,7 @@ public class Quester implements IQuester {
             if (settings.canConfirmAbandon()) {
                 final ConversationFactory cf = new ConversationFactory(plugin).withModality(false)
                         .withPrefix(context -> ChatColor.GRAY.toString())
-                        .withFirstPrompt(new QuestAbandonPrompt()).withTimeout(settings.getAcceptTimeout())
+                        .withFirstPrompt(new QuestAbandonPrompt(plugin)).withTimeout(settings.getAcceptTimeout())
                         .thatExcludesNonPlayersWithMessage("Console may not perform this conversation!")
                         .addConversationAbandonedListener(plugin.getConvoListener());
                 cf.buildConversation(getPlayer()).begin();
@@ -958,7 +924,95 @@ public class Quester implements IQuester {
             compassTargetQuestId = null;
         }
     }
-    
+
+    /**
+     * Show the player a list of their available quests
+     *
+     * @param quester Quester to show the list
+     * @param page Page to display, with 7 quests per page
+     */
+    public void listQuests(final IQuester quester, final int page) {
+        // Although we could copy the quests list to a new object, we instead opt to
+        // duplicate code to improve efficiency if ignore-locked-quests is set to 'false'
+        final int rows = 7;
+        final Player player = quester.getPlayer();
+        final Collection<IQuest> quests = plugin.getLoadedQuests();
+        if (plugin.getSettings().canIgnoreLockedQuests()) {
+            final LinkedList<IQuest> available = new LinkedList<>();
+            for (final IQuest q : quests) {
+                if (!quester.getCompletedQuestsTemp().contains(q)) {
+                    if (q.testRequirements(player)) {
+                        available.add(q);
+                    }
+                } else if (q.getPlanner().hasCooldown() && quester.getRemainingCooldown(q) < 0) {
+                    if (q.testRequirements(player)) {
+                        available.add(q);
+                    }
+                }
+            }
+            if ((available.size() + rows) <= (page * rows) || available.size() == 0) {
+                Lang.send(player, ChatColor.YELLOW + Lang.get(player, "pageNotExist"));
+            } else {
+                Lang.send(player, ChatColor.GOLD + Lang.get(player, "questListTitle"));
+                int fromOrder = (page - 1) * rows;
+                final List<IQuest> subQuests;
+                if (available.size() >= (fromOrder + rows)) {
+                    subQuests = available.subList((fromOrder), (fromOrder + rows));
+                } else {
+                    subQuests = available.subList((fromOrder), available.size());
+                }
+                fromOrder++;
+                for (final IQuest q : subQuests) {
+                    if (quester.canAcceptOffer(q, false)) {
+                        quester.sendMessage(ChatColor.YELLOW + Integer.toString(fromOrder) + ". " + q.getName());
+                    } else {
+                        quester.sendMessage(ChatColor.GRAY + Integer.toString(fromOrder) + ". " + q.getName());
+                    }
+                    fromOrder++;
+                }
+                final int numPages = (int) Math.ceil(((double) available.size()) / ((double) rows));
+                String msg = Lang.get(player, "pageFooter");
+                msg = msg.replace("<current>", String.valueOf(page));
+                msg = msg.replace("<all>", String.valueOf(numPages));
+                Lang.send(player, ChatColor.GOLD + msg);
+            }
+        } else {
+            if ((quests.size() + rows) <= (page * rows) || quests.size() == 0) {
+                Lang.send(player, ChatColor.YELLOW + Lang.get(player, "pageNotExist"));
+            } else {
+                Lang.send(player, ChatColor.GOLD + Lang.get(player, "questListTitle"));
+                int fromOrder = (page - 1) * rows;
+                final List<IQuest> subQuests;
+                if (quests.size() >= (fromOrder + rows)) {
+                    subQuests = new LinkedList<>(quests).subList((fromOrder), (fromOrder + rows));
+                } else {
+                    subQuests = new LinkedList<>(quests).subList((fromOrder), quests.size());
+                }
+                fromOrder++;
+                for (final IQuest q : subQuests) {
+                    if (quester.canAcceptOffer(q, false)) {
+                        Lang.send(player, ChatColor.YELLOW + Integer.toString(fromOrder) + ". " + q.getName());
+                    } else {
+                        Lang.send(player, ChatColor.GRAY + Integer.toString(fromOrder) + ". " + q.getName());
+                    }
+                    fromOrder++;
+                }
+                final int numPages = (int) Math.ceil(((double) quests.size()) / ((double) rows));
+                String msg = Lang.get(player, "pageFooter");
+                msg = msg.replace("<current>", String.valueOf(page));
+                msg = msg.replace("<all>", String.valueOf(numPages));
+                Lang.send(player, ChatColor.GOLD + msg);
+            }
+        }
+    }
+
+    /**
+     * Get current requirements for a quest, both finished and unfinished
+     *
+     * @param quest The quest to get objectives of
+     * @param ignoreOverrides Whether to ignore objective-overrides
+     * @return List of detailed requirements
+     */
     public LinkedList<String> getCurrentRequirements(final IQuest quest, final boolean ignoreOverrides) {
         if (quest == null) {
             return new LinkedList<>();
@@ -1000,18 +1054,23 @@ public class Quester implements IQuester {
                 finishedRequirements.add(ChatColor.GRAY + "" + requirements.getQuestPoints() + " " + Lang.get("questPoints"));
             }
         }
-        for (final IQuest q : requirements.getNeededQuests()) {
-            if (q != null) {
-                if (getCompletedQuestsTemp().contains(q)) {
-                    finishedRequirements.add(ChatColor.GREEN + q.getName());
-                } else {
-                    unfinishedRequirements.add(ChatColor.GRAY + q.getName());
-                }
+        final Map<String, String> completed = completedQuests.stream()
+                .collect(Collectors.toMap(IQuest::getId, IQuest::getName));
+        for (final String questId : requirements.getNeededQuestIds()) {
+            if (completed.containsKey(questId)) {
+                finishedRequirements.add(ChatColor.GREEN + completed.get(questId));
+            } else {
+            unfinishedRequirements.add(ChatColor.GRAY + plugin.getQuestById(questId).getName());
             }
         }
-        for (final IQuest q : requirements.getBlockQuests()) {
+        for (final String questId : requirements.getBlockQuestIds()) {
+            if (completed.containsKey(questId)) {
+                current.add(ChatColor.RED + quest.getName());
+            }
+        }
+        for (final IQuest q : currentQuests.keySet()) {
             if (q != null) {
-                if (completedQuests.contains(q) || currentQuests.containsKey(q)) {
+                if (requirements.getBlockQuestIds().contains(q.getId())) {
                     current.add(ChatColor.RED + quest.getName());
                 }
             }
@@ -1089,10 +1148,10 @@ public class Quester implements IQuester {
         current.addAll(finishedRequirements);
         return current;
     }
-    
+
     /**
      * Get current objectives for a quest, both finished and unfinished
-     * 
+     *
      * @param quest The quest to get objectives of
      * @param ignoreOverrides Whether to ignore objective-overrides
      * @return List of detailed objectives
@@ -1339,7 +1398,7 @@ public class Quester implements IQuester {
                 delivered = data.itemsDelivered.get(deliverIndex).getAmount();
             }
             final int toDeliver = is.getAmount();
-            final Integer npc = stage.getItemDeliveryTargets().get(deliverIndex);
+            final UUID npc = stage.getItemDeliveryTargets().get(deliverIndex);
             final ChatColor color = delivered < toDeliver ? ChatColor.GREEN : ChatColor.GRAY;
             String message = color + Lang.get(getPlayer(), "deliver").replace("<npc>", depends.getNPCName(npc));
             if (message.contains("<count>")) {
@@ -1355,10 +1414,10 @@ public class Quester implements IQuester {
             deliverIndex++;
         }
         int interactIndex = 0;
-        for (final Integer n : stage.getCitizensToInteract()) {
+        for (final UUID n : stage.getNpcsToInteract()) {
             boolean interacted = false;
-            if (data.citizensInteracted.size() > interactIndex) {
-                interacted = data.citizensInteracted.get(interactIndex);
+            if (data.npcsInteracted.size() > interactIndex) {
+                interacted = data.npcsInteracted.get(interactIndex);
             }
             final ChatColor color = !interacted ? ChatColor.GREEN : ChatColor.GRAY;
             String message = color + Lang.get(getPlayer(), "talkTo")
@@ -1370,12 +1429,12 @@ public class Quester implements IQuester {
             interactIndex++;
         }
         int npcKillIndex = 0;
-        for (final Integer n : stage.getCitizensToKill()) {
+        for (final UUID n : stage.getNpcsToKill()) {
             int npcKilled = 0;
-            if (data.citizensNumKilled.size() > npcKillIndex) {
-                npcKilled = data.citizensNumKilled.get(npcKillIndex);
+            if (data.npcsNumKilled.size() > npcKillIndex) {
+                npcKilled = data.npcsNumKilled.get(npcKillIndex);
             }
-            final int toNpcKill = stage.getCitizenNumToKill().get(npcKillIndex);
+            final int toNpcKill = stage.getNpcNumToKill().get(npcKillIndex);
             final ChatColor color = npcKilled < toNpcKill ? ChatColor.GREEN : ChatColor.GRAY;
             String message = color + Lang.get(getPlayer(), "kill");
             if (message.contains("<mob>")) {
@@ -1565,6 +1624,657 @@ public class Quester implements IQuester {
     /**
      * Get current objectives for a quest, both finished and unfinished
      * 
+     * @param quest The quest to get objectives of
+     * @param ignoreOverrides Whether to ignore objective-overrides
+     * @param formatNames Whether to format item/entity names, if applicable
+     * @return List of detailed objectives
+     */
+    @SuppressWarnings("deprecation")
+    public LinkedList<BukkitObjective> getCurrentObjectivesTemp(final IQuest quest, final boolean ignoreOverrides,
+                                                   final boolean formatNames) {
+        if (quest == null) {
+            plugin.getLogger().severe("Quest was null when getting objectives for " + getLastKnownName());
+            return new LinkedList<>();
+        }
+        if (getQuestData(quest) == null) {
+            plugin.getLogger().warning("Quest data was null when getting objectives for " + quest.getName());
+            return new LinkedList<>();
+        }
+        final IStage stage = getCurrentStage(quest);
+        if (stage == null) {
+            //plugin.getLogger().warning("Current stage was null when getting objectives for " + quest.getName());
+            return new LinkedList<>();
+        }
+        final IDependencies depends = plugin.getDependencies();
+        if (!ignoreOverrides && !stage.getObjectiveOverrides().isEmpty()) {
+            final LinkedList<BukkitObjective> objectives = new LinkedList<>();
+            for (final String s: stage.getObjectiveOverrides()) {
+                String message = ChatColor.GREEN + ConfigUtil.parseString(s, quest, getPlayer());
+                if (depends.getPlaceholderApi() != null) {
+                    message = PlaceholderAPI.setPlaceholders(getPlayer(), message);
+                }
+                // TODO is this acceptable?
+                objectives.add(new BukkitObjective(ObjectiveType.CUSTOM, message, 0, 1));
+            }
+            return objectives;
+        }
+        final QuestData data = getQuestData(quest);
+        final LinkedList<BukkitObjective> objectives = new LinkedList<>();
+        for (final ItemStack goal : stage.getBlocksToBreak()) {
+            for (final ItemStack progress : data.blocksBroken) {
+                if (progress.getType().equals(goal.getType()) && progress.getDurability() == goal.getDurability()) {
+                    final ChatColor color = progress.getAmount() < goal.getAmount() ? ChatColor.GREEN : ChatColor.GRAY;
+                    String message = color + Lang.get(getPlayer(), "break");
+                    if (message.contains("<count>")) {
+                        message = message.replace("<count>", "" + color + progress.getAmount() + "/"
+                                + goal.getAmount());
+                    } else {
+                        // Legacy
+                        message += " <item>" + color + color + ": " + progress.getAmount() + "/" + goal.getAmount();
+                    }
+                    if (depends.getPlaceholderApi() != null) {
+                        message = PlaceholderAPI.setPlaceholders(getPlayer(), message);
+                    }
+                    if (formatNames) {
+                        message = message.replace("<item>", ItemUtil.getName(progress));
+                    }
+                    objectives.add(new BukkitObjective(ObjectiveType.BREAK_BLOCK, message, progress, goal));
+                }
+            }
+        }
+        for (final ItemStack goal : stage.getBlocksToDamage()) {
+            for (final ItemStack progress : data.blocksDamaged) {
+                if (progress.getType().equals(goal.getType()) && progress.getDurability() == goal.getDurability()) {
+                    final ChatColor color = progress.getAmount() < goal.getAmount() ? ChatColor.GREEN : ChatColor.GRAY;
+                    String message = color + Lang.get(getPlayer(), "damage");
+                    if (message.contains("<count>")) {
+                        message = message.replace("<count>", "" + color + progress.getAmount() + "/"
+                                + goal.getAmount());
+                    } else {
+                        // Legacy
+                        message += " <item>" + color + color + ": " + progress.getAmount() + "/" + goal.getAmount();
+                    }
+                    if (depends.getPlaceholderApi() != null) {
+                        message = PlaceholderAPI.setPlaceholders(getPlayer(), message);
+                    }
+                    if (formatNames) {
+                        message = message.replace("<item>", ItemUtil.getName(progress));
+                    }
+                    objectives.add(new BukkitObjective(ObjectiveType.DAMAGE_BLOCK, message, progress, goal));
+                }
+            }
+        }
+        for (final ItemStack goal : stage.getBlocksToPlace()) {
+            for (final ItemStack progress : data.blocksPlaced) {
+                final ChatColor color = progress.getAmount() < goal.getAmount() ? ChatColor.GREEN : ChatColor.GRAY;
+                String message = color + Lang.get(getPlayer(), "place");
+                if (progress.getType().equals(goal.getType()) && progress.getDurability() == goal.getDurability()) {
+                    if (message.contains("<count>")) {
+                        message = message.replace("<count>", "" + color + progress.getAmount() + "/"
+                                + goal.getAmount());
+                    } else {
+                        // Legacy
+                        message += " <item>" + color + color + ": " + progress.getAmount() + "/" + goal.getAmount();
+                    }
+                    if (depends.getPlaceholderApi() != null) {
+                        message = PlaceholderAPI.setPlaceholders(getPlayer(), message);
+                    }
+                    if (formatNames) {
+                        message = message.replace("<item>", ItemUtil.getName(progress));
+                    }
+                    objectives.add(new BukkitObjective(ObjectiveType.PLACE_BLOCK, message, progress, goal));
+                }
+            }
+        }
+        for (final ItemStack goal : stage.getBlocksToUse()) {
+            for (final ItemStack progress : data.blocksUsed) {
+                final ChatColor color = progress.getAmount() < goal.getAmount() ? ChatColor.GREEN : ChatColor.GRAY;
+                String message = color + Lang.get(getPlayer(), "use");
+                if (progress.getType().equals(goal.getType()) && progress.getDurability() == goal.getDurability()) {
+                    if (message.contains("<count>")) {
+                        message = message.replace("<count>", "" + color + progress.getAmount() + "/"
+                                + goal.getAmount());
+                    } else {
+                        // Legacy
+                        message += " <item>" + color + ": " + progress.getAmount() + "/" + goal.getAmount();
+                    }
+                    if (depends.getPlaceholderApi() != null) {
+                        message = PlaceholderAPI.setPlaceholders(getPlayer(), message);
+                    }
+                    if (formatNames) {
+                        message = message.replace("<item>", ItemUtil.getName(progress));
+                    }
+                    objectives.add(new BukkitObjective(ObjectiveType.USE_BLOCK, message, progress, goal));
+                }
+            }
+        }
+        for (final ItemStack goal : stage.getBlocksToCut()) {
+            for (final ItemStack progress : data.blocksCut) {
+                final ChatColor color = progress.getAmount() < goal.getAmount() ? ChatColor.GREEN : ChatColor.GRAY;
+                String message = color + Lang.get(getPlayer(), "cut");
+                if (progress.getType().equals(goal.getType()) && progress.getDurability() == goal.getDurability()) {
+                    if (message.contains("<count>")) {
+                        message = message.replace("<count>", "" + color + progress.getAmount() + "/"
+                                + goal.getAmount());
+                    } else {
+                        // Legacy
+                        message += " <item>" + color + ": " + progress.getAmount() + "/" + goal.getAmount();
+                    }
+                    if (depends.getPlaceholderApi() != null) {
+                        message = PlaceholderAPI.setPlaceholders(getPlayer(), message);
+                    }
+                    if (formatNames) {
+                        message = message.replace("<item>", ItemUtil.getName(progress));
+                    }
+                    objectives.add(new BukkitObjective(ObjectiveType.CUT_BLOCK, message, progress, goal));
+                }
+            }
+        }
+        int craftIndex = 0;
+        for (final ItemStack goal : stage.getItemsToCraft()) {
+            if (data.itemsCrafted.size() > craftIndex) {
+                final ItemStack progress = data.itemsCrafted.get(craftIndex);
+                final int crafted = progress.getAmount();
+                final int toCraft = goal.getAmount();
+                final ChatColor color = crafted < toCraft ? ChatColor.GREEN : ChatColor.GRAY;
+                String message = color + Lang.get(getPlayer(), "craftItem");
+                if (message.contains("<count>")) {
+                    message = message.replace("<count>", "" + color + crafted + "/" + toCraft);
+                } else {
+                    // Legacy
+                    message += color + ": " + crafted + "/" + goal.getAmount();
+                }
+                if (depends.getPlaceholderApi() != null) {
+                    message = PlaceholderAPI.setPlaceholders(getPlayer(), message);
+                }
+                if (formatNames) {
+                    message = message.replace("<item>", ItemUtil.getName(goal));
+                }
+                objectives.add(new BukkitObjective(ObjectiveType.CRAFT_ITEM, message, progress, goal));
+            }
+            craftIndex++;
+        }
+        int smeltIndex = 0;
+        for (final ItemStack goal : stage.getItemsToSmelt()) {
+            if (data.itemsSmelted.size() > smeltIndex) {
+                final ItemStack progress = data.itemsSmelted.get(smeltIndex);
+                final int smelted = progress.getAmount();
+                final int toSmelt = goal.getAmount();
+                final ChatColor color = smelted < toSmelt ? ChatColor.GREEN : ChatColor.GRAY;
+                String message = color + Lang.get(getPlayer(), "smeltItem");
+                if (message.contains("<count>")) {
+                    message = message.replace("<count>", "" + color + smelted + "/" + toSmelt);
+                } else {
+                    // Legacy
+                    message += color + ": " + smelted + "/" + goal.getAmount();
+                }
+                if (depends.getPlaceholderApi() != null) {
+                    message = PlaceholderAPI.setPlaceholders(getPlayer(), message);
+                }
+                if (formatNames) {
+                    message = message.replace("<item>", ItemUtil.getName(goal));
+                }
+                objectives.add(new BukkitObjective(ObjectiveType.SMELT_ITEM, message, progress, goal));
+            }
+            smeltIndex++;
+        }
+        int enchantIndex = 0;
+        for (final ItemStack goal : stage.getItemsToEnchant()) {
+            if (data.itemsEnchanted.size() > enchantIndex) {
+                final ItemStack progress = data.itemsEnchanted.get(enchantIndex);
+                final int enchanted = progress.getAmount();
+                final int toEnchant = goal.getAmount();
+                final ChatColor color = enchanted < toEnchant ? ChatColor.GREEN : ChatColor.GRAY;
+                String message = color + Lang.get(getPlayer(), "enchItem");
+                if (message.contains("<count>")) {
+                    message = message.replace("<count>", "" + color + enchanted + "/" + toEnchant);
+                } else {
+                    // Legacy
+                    message += color + ": " + enchanted + "/" + goal.getAmount();
+                }
+                if (depends.getPlaceholderApi() != null) {
+                    message = PlaceholderAPI.setPlaceholders(getPlayer(), message);
+                }
+                if (formatNames) {
+                    message = message.replace("<item>", ItemUtil.getName(goal));
+                }
+                if (goal.getEnchantments().isEmpty()) {
+                    objectives.add(new BukkitObjective(ObjectiveType.ENCHANT_ITEM,
+                            message.replace("<enchantment>", "")
+                                    .replace("<level>", "")
+                                    .replaceAll("\\s+", " "), progress, goal));
+                } else {
+                    for (final Entry<Enchantment, Integer> e : goal.getEnchantments().entrySet()) {
+                        objectives.add(new BukkitObjective(ObjectiveType.ENCHANT_ITEM,
+                                message.replace("<enchantment>", ItemUtil.getPrettyEnchantmentName(e.getKey()))
+                                        .replace("<level>", RomanNumeral.getNumeral(e.getValue())), progress, goal));
+                    }
+                }
+            }
+            enchantIndex++;
+        }
+        int brewIndex = 0;
+        for (final ItemStack goal : stage.getItemsToBrew()) {
+            if (data.itemsBrewed.size() > brewIndex) {
+                final ItemStack progress = data.itemsBrewed.get(brewIndex);
+                final int brewed = progress.getAmount();
+                final int toBrew = goal.getAmount();
+                final ChatColor color = brewed < toBrew ? ChatColor.GREEN : ChatColor.GRAY;
+                String message = color + Lang.get(getPlayer(), "brewItem");
+                if (message.contains("<count>")) {
+                    message = message.replace("<count>", "" + color + brewed + "/" + toBrew);
+                } else {
+                    // Legacy
+                    message += color + ": " + brewed + "/" + goal.getAmount();
+                }
+                if (depends.getPlaceholderApi() != null) {
+                    message = PlaceholderAPI.setPlaceholders(getPlayer(), message);
+                }
+                if (formatNames) {
+                    message = message.replace("<item>", ItemUtil.getName(goal));
+                }
+                objectives.add(new BukkitObjective(ObjectiveType.BREW_ITEM, message, progress, goal));
+            }
+            brewIndex++;
+        }
+        int consumeIndex = 0;
+        for (final ItemStack goal : stage.getItemsToConsume()) {
+            if (data.itemsConsumed.size() > consumeIndex) {
+                final ItemStack progress = data.itemsConsumed.get(consumeIndex);
+                final int consumed = progress.getAmount();
+                final int toConsume = goal.getAmount();
+                final ChatColor color = consumed < toConsume ? ChatColor.GREEN : ChatColor.GRAY;
+                String message = color + Lang.get(getPlayer(), "consumeItem");
+                if (message.contains("<count>")) {
+                    message = message.replace("<count>", "" + color + consumed + "/" + toConsume);
+                } else {
+                    // Legacy
+                    message += color + ": " + consumed + "/" + goal.getAmount();
+                }
+                if (depends.getPlaceholderApi() != null) {
+                    message = PlaceholderAPI.setPlaceholders(getPlayer(), message);
+                }
+                if (formatNames) {
+                    message = message.replace("<item>", ItemUtil.getName(goal));
+                }
+                objectives.add(new BukkitObjective(ObjectiveType.CONSUME_ITEM, message, progress, goal));
+            }
+            consumeIndex++;
+        }
+        int deliverIndex = 0;
+        for (final ItemStack goal : stage.getItemsToDeliver()) {
+            if (data.itemsDelivered.size() > deliverIndex) {
+                final ItemStack progress = data.itemsDelivered.get(deliverIndex);
+                final int delivered = progress.getAmount();
+                final int toDeliver = goal.getAmount();
+                final UUID npc = stage.getItemDeliveryTargets().get(deliverIndex);
+                final ChatColor color = delivered < toDeliver ? ChatColor.GREEN : ChatColor.GRAY;
+                String message = color + Lang.get(getPlayer(), "deliver").replace("<npc>", depends.getNPCName(npc));
+                if (message.contains("<count>")) {
+                    message = message.replace("<count>", "" + color + delivered + "/" + toDeliver);
+                } else {
+                    // Legacy
+                    message += color + ": " + delivered + "/" + toDeliver;
+                }
+                if (depends.getPlaceholderApi() != null) {
+                    message = PlaceholderAPI.setPlaceholders(getPlayer(), message);
+                }
+                if (formatNames) {
+                    message = message.replace("<item>", ItemUtil.getName(goal));
+                }
+                objectives.add(new BukkitObjective(ObjectiveType.DELIVER_ITEM, message, progress, goal));
+            }
+            deliverIndex++;
+        }
+        int interactIndex = 0;
+        for (final UUID n : stage.getNpcsToInteract()) {
+            if (data.npcsInteracted.size() > interactIndex) {
+                boolean interacted = data.npcsInteracted.get(interactIndex);
+                final ChatColor color = !interacted ? ChatColor.GREEN : ChatColor.GRAY;
+                String message = color + Lang.get(getPlayer(), "talkTo")
+                        .replace("<npc>", depends.getNPCName(n));
+                if (depends.getPlaceholderApi() != null) {
+                    message = PlaceholderAPI.setPlaceholders(getPlayer(), message);
+                }
+                objectives.add(new BukkitObjective(ObjectiveType.TALK_TO_NPC, message, 0, 1));
+            }
+            interactIndex++;
+        }
+        int npcKillIndex = 0;
+        for (final UUID n : stage.getNpcsToKill()) {
+            int npcKilled = 0;
+            if (data.npcsNumKilled.size() > npcKillIndex) {
+                npcKilled = data.npcsNumKilled.get(npcKillIndex);
+            }
+            final int toNpcKill = stage.getNpcNumToKill().get(npcKillIndex);
+            final ChatColor color = npcKilled < toNpcKill ? ChatColor.GREEN : ChatColor.GRAY;
+            String message = color + Lang.get(getPlayer(), "kill");
+            if (message.contains("<mob>")) {
+                message = message.replace("<mob>", depends.getNPCName(n));
+            } else {
+                message += " " + depends.getNPCName(n);
+            }
+            if (message.contains("<count>")) {
+                message = message.replace("<count>", "" + color + npcKilled + "/" + toNpcKill);
+            } else {
+                // Legacy
+                message += color + ": " + npcKilled + "/" + toNpcKill;
+            }
+            if (depends.getPlaceholderApi() != null) {
+                message = PlaceholderAPI.setPlaceholders(getPlayer(), message);
+            }
+            objectives.add(new BukkitObjective(ObjectiveType.KILL_NPC, message, npcKilled, toNpcKill));
+            npcKillIndex++;
+        }
+        int mobKillIndex = 0;
+        for (final EntityType e : stage.getMobsToKill()) {
+            int mobKilled = 0;
+            if (data.mobNumKilled.size() > mobKillIndex) {
+                mobKilled = data.mobNumKilled.get(mobKillIndex);
+            }
+            final int toMobKill = stage.getMobNumToKill().get(mobKillIndex);
+            final ChatColor color = mobKilled < toMobKill ? ChatColor.GREEN : ChatColor.GRAY;
+            String message = color + "";
+            if (stage.getLocationsToKillWithin().isEmpty()) {
+                message += Lang.get(getPlayer(), "kill");
+                if (message.contains("<count>")) {
+                    message = message.replace("<count>", "" + color + mobKilled + "/" + toMobKill);
+                } else {
+                    // Legacy
+                    message += ChatColor.AQUA + " <mob>" + color + ": " + mobKilled + "/" + toMobKill;
+                }
+            } else {
+                message += Lang.get(getPlayer(), "killAtLocation").replace("<location>",
+                        stage.getKillNames().get(stage.getMobsToKill().indexOf(e)));
+                if (message.contains("<count>")) {
+                    message = message.replace("<count>", "" + color + mobKilled + "/" + toMobKill);
+                } else {
+                    message += color + ": " + mobKilled + "/" + toMobKill;
+                }
+            }
+            if (depends.getPlaceholderApi() != null) {
+                message = PlaceholderAPI.setPlaceholders(getPlayer(), message);
+            }
+            if (formatNames) {
+                message = message.replace("<mob>", MiscUtil.getProperMobName(e));
+            }
+            objectives.add(new BukkitObjective(ObjectiveType.KILL_MOB, message,
+                    new CountableMob(e, mobKilled), new CountableMob(e, toMobKill)));
+            mobKillIndex++;
+        }
+        int tameIndex = 0;
+        for (final EntityType e : stage.getMobsToTame()) {
+            int tamed = 0;
+            if (data.mobsTamed.size() > tameIndex) {
+                tamed = data.mobsTamed.get(tameIndex);
+            }
+            final int toTame = stage.getMobNumToTame().get(tameIndex);
+            final ChatColor color = tamed < toTame ? ChatColor.GREEN : ChatColor.GRAY;
+            String message = color + Lang.get(getPlayer(), "tame");
+            if (!message.contains("<mob>")) {
+                message += " <mob>";
+            }
+            if (message.contains("<count>")) {
+                message = message.replace("<count>", "" + color + tamed + "/" + toTame);
+            } else {
+                // Legacy
+                message += color + ": " + tamed + "/" + toTame;
+            }
+            if (formatNames) {
+                message = message.replace("<mob>", MiscUtil.getProperMobName(stage.getMobsToTame().get(tameIndex)));
+            }
+            objectives.add(new BukkitObjective(ObjectiveType.TAME_MOB, message,
+                    new CountableMob(e, tamed), new CountableMob(e, toTame)));
+            tameIndex++;
+        }
+        if (stage.getFishToCatch() != null) {
+            final int caught = data.getFishCaught();
+            final int toCatch = stage.getFishToCatch();
+            final ChatColor color = caught < toCatch ? ChatColor.GREEN : ChatColor.GRAY;
+            String message = color + Lang.get(getPlayer(), "catchFish");
+            if (message.contains("<count>")) {
+                message = message.replace("<count>", "" + color + caught + "/" + toCatch);
+            } else {
+                // Legacy
+                message += color + ": " + caught + "/" + toCatch;
+            }
+            if (depends.getPlaceholderApi() != null) {
+                message = PlaceholderAPI.setPlaceholders(getPlayer(), message);
+            }
+            objectives.add(new BukkitObjective(ObjectiveType.CATCH_FISH, message, caught, toCatch));
+        }
+        if (stage.getCowsToMilk() != null) {
+            final int milked = data.getCowsMilked();
+            final int toMilk = stage.getCowsToMilk();
+            final ChatColor color = milked < toMilk ? ChatColor.GREEN : ChatColor.GRAY;
+            String message = color + Lang.get(getPlayer(), "milkCow");
+            if (message.contains("<count>")) {
+                message = message.replace("<count>", "" + color + milked + "/" + toMilk);
+            } else {
+                // Legacy
+                message += color + ": " + milked + "/" + toMilk;
+            }
+            if (depends.getPlaceholderApi() != null) {
+                message = PlaceholderAPI.setPlaceholders(getPlayer(), message);
+            }
+            objectives.add(new BukkitObjective(ObjectiveType.MILK_COW, message, milked, toMilk));
+        }
+        int shearIndex = 0;
+        for (final int toShear : stage.getSheepNumToShear()) {
+            int sheared = 0;
+            if (data.sheepSheared.size() > shearIndex) {
+                sheared = data.sheepSheared.get(shearIndex);
+            }
+            final ChatColor color = sheared < toShear ? ChatColor.GREEN : ChatColor.GRAY;
+            String message = color + Lang.get(getPlayer(), "shearSheep");
+            message = message.replace("<color>", MiscUtil.getPrettyDyeColorName(stage.getSheepToShear()
+                    .get(shearIndex)));
+            if (message.contains("<count>")) {
+                message = message.replace("<count>", "" + color + sheared + "/" + toShear);
+            } else {
+                // Legacy
+                message += color + ": " + sheared + "/" + toShear;
+            }
+            objectives.add(new BukkitObjective(ObjectiveType.SHEAR_SHEEP, message, sheared, toShear));
+            shearIndex++;
+        }
+        if (stage.getPlayersToKill() != null) {
+            final int killed = data.getPlayersKilled();
+            final int toKill = stage.getPlayersToKill();
+            final ChatColor color = data.getPlayersKilled() < stage.getPlayersToKill() ? ChatColor.GREEN
+                    : ChatColor.GRAY;
+            String message = color + Lang.get(getPlayer(), "killPlayer");
+            if (message.contains("<count>")) {
+                message = message.replace("<count>", "" + color + data.getPlayersKilled() + "/"
+                        + stage.getPlayersToKill());
+            } else {
+                // Legacy
+                message += color + ": " + data.getPlayersKilled() + "/" + stage.getPlayersToKill();
+            }
+            if (depends.getPlaceholderApi() != null) {
+                message = PlaceholderAPI.setPlaceholders(getPlayer(), message);
+            }
+            objectives.add(new BukkitObjective(ObjectiveType.KILL_PLAYER, message, killed, toKill));
+        }
+        for (int i = 0 ; i < stage.getLocationsToReach().size(); i++) {
+            if (i < data.locationsReached.size()) {
+                final ChatColor color = !data.locationsReached.get(i) ? ChatColor.GREEN : ChatColor.GRAY;
+                String message = color + Lang.get(getPlayer(), "goTo");
+                message = message.replace("<location>", stage.getLocationNames().get(i));
+                objectives.add(new BukkitObjective(ObjectiveType.REACH_LOCATION, message, 0, 1));
+            }
+        }
+        int passIndex = 0;
+        for (final String s : stage.getPasswordDisplays()) {
+            boolean said = false;
+            if (data.passwordsSaid.size() > passIndex) {
+                said = data.passwordsSaid.get(passIndex);
+            }
+            final ChatColor color = !said ? ChatColor.GREEN : ChatColor.GRAY;
+            String message = color + s;
+            objectives.add(new BukkitObjective(ObjectiveType.PASSWORD, message, 0, 1));
+            passIndex++;
+        }
+        int customIndex = 0;
+        for (final ICustomObjective co : stage.getCustomObjectives()) {
+            int cleared = 0;
+            if (data.customObjectiveCounts.size() > customIndex) {
+                cleared = data.customObjectiveCounts.get(customIndex);
+            }
+            final int toClear = stage.getCustomObjectiveCounts().get(customIndex);
+            final ChatColor color = cleared < toClear ? ChatColor.GREEN : ChatColor.GRAY;
+            String message = color + co.getDisplay();
+            for (final Entry<String,Object> prompt : co.getData()) {
+                final String replacement = "%" + prompt.getKey() + "%";
+                try {
+                    for (final Entry<String, Object> e : stage.getCustomObjectiveData()) {
+                        if (e.getKey().equals(prompt.getKey())) {
+                            if (message.contains(replacement)) {
+                                message = message.replace(replacement, ((String) e.getValue()));
+                            }
+                        }
+                    }
+                } catch (final NullPointerException ne) {
+                    plugin.getLogger().severe("Unable to gather display for " + co.getName() + " on "
+                            + quest.getName());
+                    ne.printStackTrace();
+                }
+            }
+            if (co.canShowCount()) {
+                message = message.replace("%count%", cleared + "/" + toClear);
+            }
+            message = ConfigUtil.parseString(message);
+            objectives.add(new BukkitObjective(ObjectiveType.CUSTOM, message, cleared, toClear));
+            customIndex++;
+        }
+        return objectives;
+    }
+
+    /**
+     * Show current objectives for a quest, if applicable<p>
+     *
+     * Respects PlaceholderAPI and translations, when enabled.
+     *
+     * @param quest The quest to get current stage objectives of
+     * @param quester The player to show current stage objectives to
+     * @param ignoreOverrides Whether to ignore objective-overrides
+     */
+    public void showCurrentObjectives(final IQuest quest, final IQuester quester, final boolean ignoreOverrides) {
+        if (quest == null) {
+            plugin.getLogger().severe("Quest was null when showing objectives for " + quester.getLastKnownName());
+            return;
+        }
+        Quester q = (Quester)quester;
+        final IStage stage = quester.getCurrentStage(quest);
+        if (stage == null) {
+            plugin.getLogger().warning("Current stage was null when showing objectives for " + quest.getName());
+            return;
+        }
+        if (!ignoreOverrides && !stage.getObjectiveOverrides().isEmpty()) {
+            for (final String s: stage.getObjectiveOverrides()) {
+                String message = (s.trim().length() > 0 ? "- " : "") + ChatColor.GREEN + ConfigUtil
+                        .parseString(s, quest, quester.getPlayer());
+                if (plugin.getDependencies().getPlaceholderApi() != null) {
+                    message = PlaceholderAPI.setPlaceholders(quester.getPlayer(), message);
+                }
+                quester.sendMessage(message);
+            }
+            return;
+        }
+        final Settings settings = plugin.getSettings();
+        final LocaleManager localeManager = plugin.getLocaleManager();
+        for (BukkitObjective objective : q.getCurrentObjectivesTemp(quest, false, false)) {
+            final String message = "- " + objective.getMessage();
+            if (objective.getProgressAsItem() != null && objective.getGoalAsItem() != null) {
+                ItemStack progress = objective.getProgressAsItem();
+                ItemStack goal = objective.getGoalAsItem();
+                if (!settings.canShowCompletedObjs() && progress.getAmount() >= goal.getAmount()) {
+                    continue;
+                }
+                if (settings.canTranslateNames() && goal.hasItemMeta()) {
+                    // Bukkit version is 1.9+
+                    localeManager.sendMessage(quester.getPlayer(), message, goal.getType(), goal.getDurability(),
+                            goal.getEnchantments(), goal.getItemMeta());
+                } else if (settings.canTranslateNames() && !goal.hasItemMeta()
+                        && Material.getMaterial("LINGERING_POTION") == null) {
+                    // Bukkit version is below 1.9
+                    localeManager.sendMessage(quester.getPlayer(), message, goal.getType(), goal.getDurability(),
+                            goal.getEnchantments());
+                } else {
+                    if (goal.getEnchantments().isEmpty()) {
+                        quester.sendMessage(message.replace("<item>", ItemUtil.getName(goal))
+                                .replace("<enchantment>", "")
+                                .replace("<level>", "")
+                                .replaceAll("\\s+", " "));
+                    } else {
+                        for (final Entry<Enchantment, Integer> e : goal.getEnchantments().entrySet()) {
+                            quester.sendMessage(message.replace("<item>", ItemUtil.getName(goal))
+                                    .replace("<enchantment>", ItemUtil.getPrettyEnchantmentName(e.getKey()))
+                                    .replace("<level>", RomanNumeral.getNumeral(e.getValue())));
+                        }
+                    }
+                }
+            } else if (objective.getProgressAsMob() != null && objective.getGoalAsMob() != null) {
+                CountableMob progress = objective.getProgressAsMob();
+                CountableMob goal = objective.getGoalAsMob();
+                if (!settings.canShowCompletedObjs() && progress.getCount() >= goal.getCount()) {
+                    continue;
+                }
+                if (settings.canTranslateNames()) {
+                    localeManager.sendMessage(quester.getPlayer(), message, goal.getEntityType(), null);
+                } else {
+                    quester.sendMessage(message.replace("<mob>", MiscUtil.getProperMobName(goal.getEntityType())));
+                }
+            } else {
+                if (!settings.canShowCompletedObjs() && objective.getProgress() >= objective.getGoal()) {
+                    continue;
+                }
+                quester.sendMessage(message);
+            }
+        }
+        final QuestData data = quester.getQuestData(quest);
+        if (data == null) {
+            plugin.getLogger().warning("Quest data was null when showing objectives for " + quest.getName());
+            return;
+        }
+        int customIndex = 0;
+        for (final ICustomObjective customObjective : stage.getCustomObjectives()) {
+            int progress = data.customObjectiveCounts.size() > customIndex
+                    ? data.customObjectiveCounts.get(customIndex) : 0;
+            final int goal = stage.getCustomObjectiveCounts().get(customIndex);
+            final ChatColor color = progress < goal ? ChatColor.GREEN : ChatColor.GRAY;
+            if (!settings.canShowCompletedObjs() && color.equals(ChatColor.GRAY)) {
+                customIndex++;
+                continue;
+            }
+            String message = "- " + color + customObjective.getDisplay();
+            for (final Entry<String,Object> prompt : customObjective.getData()) {
+                final String replacement = "%" + prompt.getKey() + "%";
+                try {
+                    for (final Entry<String, Object> e : stage.getCustomObjectiveData()) {
+                        if (e.getKey().equals(prompt.getKey())) {
+                            if (message.contains(replacement)) {
+                                message = message.replace(replacement, ((String) e.getValue()));
+                            }
+                        }
+                    }
+                } catch (final NullPointerException npe) {
+                    plugin.getLogger().severe("Unable to fetch display for " + customObjective.getName() + " on "
+                            + quest.getName());
+                    npe.printStackTrace();
+                }
+            }
+            if (customObjective.canShowCount()) {
+                message = message.replace("%count%", progress + "/" + goal);
+            }
+            quester.sendMessage(ConfigUtil.parseString(message));
+            customIndex++;
+        }
+    }
+    
+    /**
+     * Get current objectives for a quest, both finished and unfinished
+     * 
      * @deprecated Use {@link #getCurrentObjectives(IQuest, boolean)}
      * @param quest The quest to get objectives of
      * @param ignoreOverrides Whether to ignore objective-overrides
@@ -1597,6 +2307,20 @@ public class Quester implements IQuester {
     }
 
     /**
+     * Check if player's current stage has the specified objective
+     *
+     * @param quest The quest to check objectives of
+     * @param type The type of objective to check for
+     * @return true if stage contains specified objective
+     */
+    public boolean hasObjective(final IQuest quest, final ObjectiveType type) {
+        if (quest == null || getCurrentStage(quest) == null || type == null) {
+            return false;
+        }
+        return getCurrentStage(quest).containsObjective(type);
+    }
+
+    /**
      * Check if player's current stage has the specified custom objective
      *
      * @param quest The quest to check custom objectives of
@@ -1604,7 +2328,7 @@ public class Quester implements IQuester {
      * @return true if stage contains specified objective
      */
     public boolean hasCustomObjective(final IQuest quest, final String name) {
-        if (quest == null || getCurrentStage(quest) == null) {
+        if (quest == null || getCurrentStage(quest) == null || name == null) {
             return false;
         }
         for (final ICustomObjective co : getCurrentStage(quest).getCustomObjectives()) {
@@ -1613,6 +2337,107 @@ public class Quester implements IQuester {
             }
         }
         return false;
+    }
+
+    /**
+     * Show all of a player's conditions for the current stage of a quest.<p>
+     *
+     * @param quest The quest to get current stage objectives of
+     * @param quester The player to show current stage objectives to
+     */
+    public void showCurrentConditions(final IQuest quest, final IQuester quester) {
+        if (quest == null) {
+            plugin.getLogger().severe("Quest was null when getting conditions for " + quester.getLastKnownName());
+            return;
+        }
+        if (quester.getQuestData(quest) == null) {
+            plugin.getLogger().warning("Quest data was null when showing conditions for " + quest.getName());
+            return;
+        }
+        final IStage stage = quester.getCurrentStage(quest);
+        if (stage == null) {
+            plugin.getLogger().warning("Current stage was null when showing conditions for " + quest.getName());
+            return;
+        }
+        final ICondition c = stage.getCondition();
+        if (c != null && stage.getObjectiveOverrides().isEmpty()) {
+            quester.sendMessage(ChatColor.LIGHT_PURPLE + Lang.get("stageEditorConditions"));
+            final StringBuilder msg = new StringBuilder("- " + ChatColor.YELLOW);
+            if (!c.getEntitiesWhileRiding().isEmpty()) {
+                msg.append(Lang.get("conditionEditorRideEntity"));
+                for (final String e : c.getEntitiesWhileRiding()) {
+                    msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(e);
+                }
+                quester.sendMessage(msg.toString());
+            } else if (!c.getNpcsWhileRiding().isEmpty()) {
+                msg.append(Lang.get("conditionEditorRideNPC"));
+                for (final UUID u : c.getNpcsWhileRiding()) {
+                    if (plugin.getDependencies().getCitizens() != null) {
+                        msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(CitizensAPI.getNPCRegistry()
+                                .getByUniqueId(u).getName());
+                    } else {
+                        msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(u);
+                    }
+                }
+                quester.sendMessage(msg.toString());
+            } else if (!c.getPermissions().isEmpty()) {
+                msg.append(Lang.get("conditionEditorPermissions"));
+                for (final String e : c.getPermissions()) {
+                    msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(e);
+                }
+                quester.sendMessage(msg.toString());
+            } else if (!c.getItemsWhileHoldingMainHand().isEmpty()) {
+                msg.append(Lang.get("conditionEditorItemsInMainHand"));
+                for (final ItemStack is : c.getItemsWhileHoldingMainHand()) {
+                    msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(ItemUtil.getPrettyItemName(is
+                            .getType().name()));
+                }
+                quester.sendMessage(msg.toString());
+            } else if (!c.getItemsWhileWearing().isEmpty()) {
+                msg.append(Lang.get("conditionEditorItemsWear"));
+                for (final ItemStack is : c.getItemsWhileWearing()) {
+                    msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(ItemUtil.getPrettyItemName(is
+                            .getType().name()));
+                }
+                quester.sendMessage(msg.toString());
+            } else if (!c.getWorldsWhileStayingWithin().isEmpty()) {
+                msg.append(Lang.get("conditionEditorStayWithinWorld"));
+                for (final String w : c.getWorldsWhileStayingWithin()) {
+                    msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(w);
+                }
+                quester.sendMessage(msg.toString());
+            } else if (c.getTickStartWhileStayingWithin() > -1 && c.getTickEndWhileStayingWithin() > -1) {
+                msg.append(Lang.get("conditionEditorStayWithinTicks"));
+                msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(c.getTickStartWhileStayingWithin())
+                        .append(" - ").append(c.getTickEndWhileStayingWithin());
+                quester.sendMessage(msg.toString());
+            } else if (!c.getBiomesWhileStayingWithin().isEmpty()) {
+                msg.append(Lang.get("conditionEditorStayWithinBiome"));
+                for (final String b : c.getBiomesWhileStayingWithin()) {
+                    msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(MiscUtil
+                            .snakeCaseToUpperCamelCase(b));
+                }
+                quester.sendMessage(msg.toString());
+            } else if (!c.getRegionsWhileStayingWithin().isEmpty()) {
+                msg.append(Lang.get("conditionEditorStayWithinRegion"));
+                for (final String r : c.getRegionsWhileStayingWithin()) {
+                    msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(r);
+                }
+                quester.sendMessage(msg.toString());
+            } else if (!c.getPlaceholdersCheckIdentifier().isEmpty()) {
+                msg.append(Lang.get("conditionEditorCheckPlaceholder"));
+                int index = 0;
+                for (final String r : c.getPlaceholdersCheckIdentifier()) {
+                    if (c.getPlaceholdersCheckValue().size() > index) {
+                        msg.append(ChatColor.AQUA).append("\n   \u2515 ").append(r).append(ChatColor.GRAY)
+                                .append(" = ").append(ChatColor.AQUA).append(c.getPlaceholdersCheckValue()
+                                        .get(index));
+                    }
+                    index++;
+                }
+                quester.sendMessage(msg.toString());
+            }
+        }
     }
     
     /**
@@ -2182,7 +3007,7 @@ public class Quester implements IQuester {
     }
 
     /**
-     * Mark book as enchanted if Quester has such an objective
+     * Marks book as enchanted if Quester has such an objective
      *
      * @param quest The quest for which the item is being enchanted
      * @param itemStack The book being enchanted
@@ -2428,14 +3253,14 @@ public class Quester implements IQuester {
      * Mark item as delivered to a NPC if Quester has such an objective
      * 
      * @param quest The quest for which the item is being delivered
-     * @param npc The NPC being delivered to
+     * @param npc UUID of the NPC being delivered to
      * @param itemStack The item being delivered
      */
-    public void deliverToNPC(final IQuest quest, final NPC npc, final ItemStack itemStack) {
+    public void deliverToNPC(final IQuest quest, final UUID npc, final ItemStack itemStack) {
         if (npc == null) {
             return;
         }
-        
+
         int currentIndex = -1;
         final LinkedList<Integer> matches = new LinkedList<>();
         for (final ItemStack is : getQuestData(quest).itemsDelivered) {
@@ -2450,7 +3275,7 @@ public class Quester implements IQuester {
         final Player player = getPlayer();
         for (final Integer match : matches) {
             final LinkedList<ItemStack> items = new LinkedList<>(getQuestData(quest).itemsDelivered);
-            if (!getCurrentStage(quest).getItemDeliveryTargets().get(match).equals(npc.getId())) {
+            if (!getCurrentStage(quest).getItemDeliveryTargets().get(match).equals(npc)) {
                 continue;
             }
             final ItemStack found = items.get(match);
@@ -2458,6 +3283,7 @@ public class Quester implements IQuester {
             final int toDeliver = getCurrentStage(quest).getItemsToDeliver().get(match).getAmount();
             
             final ObjectiveType type = ObjectiveType.DELIVER_ITEM;
+            final Set<String> dispatchedQuestIDs = new HashSet<>();
             final QuesterPreUpdateObjectiveEvent preEvent = new QuesterPreUpdateObjectiveEvent(this, quest, 
                     new BukkitObjective(type, amount, toDeliver));
             plugin.getServer().getPluginManager().callEvent(preEvent);
@@ -2484,14 +3310,6 @@ public class Quester implements IQuester {
                     player.updateInventory();
                     finishObjective(quest, new BukkitObjective(type, new ItemStack(m, 1), found), null, null, null, null,
                             null, null, null);
-                    
-                    // Multiplayer
-                    dispatchMultiplayerObjectives(quest, getCurrentStage(quest), (final IQuester q) -> {
-                        q.getQuestData(quest).itemsDelivered.set(items.indexOf(found), found.clone());
-                        q.finishObjective(quest, new BukkitObjective(type, new ItemStack(m, 1), found), null, null, null,
-                                null, null, null, null);
-                        return null;
-                    });
                 } else {
                     found.setAmount(newAmount);
                     getQuestData(quest).itemsDelivered.set(items.indexOf(found), found.clone());
@@ -2500,9 +3318,21 @@ public class Quester implements IQuester {
                     final String[] message = ConfigUtil.parseStringWithPossibleLineBreaks(getCurrentStage(quest)
                             .getDeliverMessages().get(new Random().nextInt(getCurrentStage(quest).getDeliverMessages()
                             .size())), plugin.getDependencies().getCitizens().getNPCRegistry()
-                            .getById(getCurrentStage(quest).getItemDeliveryTargets().get(items.indexOf(found))));
+                            .getByUniqueId(getCurrentStage(quest).getItemDeliveryTargets().get(items.indexOf(found))),
+                            toDeliver - newAmount);
                     player.sendMessage(message);
                 }
+
+                dispatchedQuestIDs.addAll(dispatchMultiplayerEverything(quest, ObjectiveType.DELIVER_ITEM,
+                        (final IQuester q, final IQuest cq) -> {
+                            if (!dispatchedQuestIDs.contains(cq.getId())) {
+                                q.getQuestData(quest).itemsDelivered.set(items.indexOf(found), found.clone());
+                                if (q.testComplete(quest)) {
+                                    quest.nextStage(q, false);
+                                }
+                            }
+                            return null;
+                        }));
             }
             
             final QuesterPostUpdateObjectiveEvent postEvent = new QuesterPostUpdateObjectiveEvent(this, quest, 
@@ -2515,33 +3345,37 @@ public class Quester implements IQuester {
      * Mark NPC as interacted with if Quester has such an objective
      * 
      * @param quest The quest for which the NPC is being interacted with
-     * @param npc The NPC being interacted with
+     * @param npc UUID of the NPC being interacted with
      */
-    public void interactWithNPC(final IQuest quest, final NPC npc) {
-        if (!getCurrentStage(quest).getCitizensToInteract().contains(npc.getId())) {
+    public void interactWithNPC(final IQuest quest, final UUID npc) {
+        if (!getCurrentStage(quest).getNpcsToInteract().contains(npc)) {
             return;
         }
 
-        final int index = getCurrentStage(quest).getCitizensToInteract().indexOf(npc.getId());
-        final boolean npcsInteracted = getQuestData(quest).citizensInteracted.get(index);
+        final int index = getCurrentStage(quest).getNpcsToInteract().indexOf(npc);
+        final boolean npcsInteracted = getQuestData(quest).npcsInteracted.get(index);
 
         final ObjectiveType type = ObjectiveType.TALK_TO_NPC;
+        final Set<String> dispatchedQuestIDs = new HashSet<>();
         final QuesterPreUpdateObjectiveEvent preEvent = new QuesterPreUpdateObjectiveEvent(this, quest,
                 new BukkitObjective(type, 1, 1));
         plugin.getServer().getPluginManager().callEvent(preEvent);
 
         if (!npcsInteracted) {
-            getQuestData(quest).citizensInteracted.set(index, true);
+            getQuestData(quest).npcsInteracted.set(index, true);
             finishObjective(quest, new BukkitObjective(type, new ItemStack(Material.AIR, 1),
                             new ItemStack(Material.AIR, 1)), null, null, npc, null, null, null, null);
-            
-            // Multiplayer
-            dispatchMultiplayerObjectives(quest, getCurrentStage(quest), (final IQuester q) -> {
-                q.getQuestData(quest).citizensInteracted.set(index, true);
-                q.finishObjective(quest, new BukkitObjective(type, new ItemStack(Material.AIR, 1),
-                        new ItemStack(Material.AIR, 1)), null, null, npc, null, null, null, null);
-                return null;
-            });
+
+            dispatchedQuestIDs.addAll(dispatchMultiplayerEverything(quest, type,
+                    (final IQuester q, final IQuest cq) -> {
+                        if (!dispatchedQuestIDs.contains(cq.getId())) {
+                            q.getQuestData(quest).npcsInteracted.set(index, true);
+                            if (q.testComplete(quest)) {
+                                quest.nextStage(q, false);
+                            }
+                        }
+                        return null;
+                    }));
             
             final QuesterPostUpdateObjectiveEvent postEvent = new QuesterPostUpdateObjectiveEvent(this, quest, 
                     new BukkitObjective(type, 1, 1));
@@ -2553,38 +3387,41 @@ public class Quester implements IQuester {
      * Mark NPC as killed if the Quester has such an objective
      * 
      * @param quest The quest for which the NPC is being killed
-     * @param npc The NPC being killed
+     * @param npc UUID of the NPC being killed
      */
-    public void killNPC(final IQuest quest, final NPC npc) {
-        if (!getCurrentStage(quest).getCitizensToKill().contains(npc.getId())) {
+    public void killNPC(final IQuest quest, final UUID npc) {
+        if (!getCurrentStage(quest).getNpcsToKill().contains(npc)) {
             return;
         }
         
-        final int index = getCurrentStage(quest).getCitizensToKill().indexOf(npc.getId());
-        final int npcsKilled = getQuestData(quest).citizensNumKilled.get(index);
-        final int npcsToKill = getCurrentStage(quest).getCitizenNumToKill().get(index);
+        final int index = getCurrentStage(quest).getNpcsToKill().indexOf(npc);
+        final int npcsKilled = getQuestData(quest).npcsNumKilled.get(index);
+        final int npcsToKill = getCurrentStage(quest).getNpcNumToKill().get(index);
         
         final ObjectiveType type = ObjectiveType.KILL_NPC;
+        final Set<String> dispatchedQuestIDs = new HashSet<>();
         final QuesterPreUpdateObjectiveEvent preEvent = new QuesterPreUpdateObjectiveEvent(this, quest, 
                 new BukkitObjective(type, npcsKilled, npcsToKill));
         plugin.getServer().getPluginManager().callEvent(preEvent);
         
-        final int newNpcsKilled = getQuestData(quest).citizensNumKilled.get(index) + 1;
+        final int newNpcsKilled = getQuestData(quest).npcsNumKilled.get(index) + 1;
         if (npcsKilled < npcsToKill) {
-            getQuestData(quest).citizensNumKilled.set(index, newNpcsKilled);
+            getQuestData(quest).npcsNumKilled.set(index, newNpcsKilled);
             if (newNpcsKilled >= npcsToKill) {
                 finishObjective(quest, new BukkitObjective(type, new ItemStack(Material.AIR, 1),
                         new ItemStack(Material.AIR, npcsToKill)), null, null, npc, null, null, null, null);
-                
-                // Multiplayer
-                dispatchMultiplayerObjectives(quest, getCurrentStage(quest), (final IQuester q) -> {
-                    q.getQuestData(quest).citizensNumKilled.set(index, getQuestData(quest).citizensNumKilled
-                            .get(index));
-                    q.finishObjective(quest, new BukkitObjective(type, new ItemStack(Material.AIR, 1),
-                            new ItemStack(Material.AIR, npcsToKill)), null, null, npc, null, null, null, null);
-                    return null;
-                });
             }
+
+            dispatchedQuestIDs.addAll(dispatchMultiplayerEverything(quest, type,
+                    (final IQuester q, final IQuest cq) -> {
+                        if (!dispatchedQuestIDs.contains(cq.getId())) {
+                            q.getQuestData(quest).npcsNumKilled.set(index, newNpcsKilled);
+                            if (q.testComplete(quest)) {
+                                quest.nextStage(q, false);
+                            }
+                        }
+                        return null;
+                    }));
         }
         
         final QuesterPostUpdateObjectiveEvent postEvent = new QuesterPostUpdateObjectiveEvent(this, quest, 
@@ -2614,6 +3451,7 @@ public class Quester implements IQuester {
         final int cowsToMilk = currentStage.getCowsToMilk();
         
         final ObjectiveType type = ObjectiveType.MILK_COW;
+        final Set<String> dispatchedQuestIDs = new HashSet<>();
         final QuesterPreUpdateObjectiveEvent preEvent = new QuesterPreUpdateObjectiveEvent(this, quest, 
                 new BukkitObjective(type, cowsMilked, cowsToMilk));
         plugin.getServer().getPluginManager().callEvent(preEvent);
@@ -2625,15 +3463,18 @@ public class Quester implements IQuester {
             if (newCowsMilked >= cowsToMilk) {
                 finishObjective(quest, new BukkitObjective(type, new ItemStack(Material.AIR, 1),
                         new ItemStack(Material.AIR, cowsToMilk)), null, null, null, null, null, null, null);
-                
-                // Multiplayer
-                dispatchMultiplayerObjectives(quest, getCurrentStage(quest), (final IQuester q) -> {
-                    q.getQuestData(quest).setCowsMilked(cowsToMilk);
-                    q.finishObjective(quest, new BukkitObjective(type, new ItemStack(Material.AIR, 1),
-                            new ItemStack(Material.AIR, cowsToMilk)), null, null, null, null, null, null, null);
-                    return null;
-                });
             }
+
+            dispatchedQuestIDs.addAll(dispatchMultiplayerEverything(quest, type,
+                    (final IQuester q, final IQuest cq) -> {
+                        if (!dispatchedQuestIDs.contains(cq.getId())) {
+                            q.getQuestData(quest).setCowsMilked(newCowsMilked);
+                            if (q.testComplete(quest)) {
+                                quest.nextStage(q, false);
+                            }
+                        }
+                        return null;
+                    }));
         }
         
         final QuesterPostUpdateObjectiveEvent postEvent = new QuesterPostUpdateObjectiveEvent(this, quest, 
@@ -2663,6 +3504,7 @@ public class Quester implements IQuester {
         final int fishToCatch = currentStage.getFishToCatch();
         
         final ObjectiveType type = ObjectiveType.CATCH_FISH;
+        final Set<String> dispatchedQuestIDs = new HashSet<>();
         final QuesterPreUpdateObjectiveEvent preEvent = new QuesterPreUpdateObjectiveEvent(this, quest, 
                 new BukkitObjective(type, fishCaught, fishToCatch));
         plugin.getServer().getPluginManager().callEvent(preEvent);
@@ -2674,15 +3516,18 @@ public class Quester implements IQuester {
             if (newFishCaught >= fishToCatch) {
                 finishObjective(quest, new BukkitObjective(type, new ItemStack(Material.AIR, 1),
                         new ItemStack(Material.AIR, fishToCatch)), null, null, null, null, null, null, null);
-                
-                // Multiplayer
-                dispatchMultiplayerObjectives(quest, getCurrentStage(quest), (final IQuester q) -> {
-                    q.getQuestData(quest).setFishCaught(fishToCatch);
-                    q.finishObjective(quest, new BukkitObjective(type, new ItemStack(Material.AIR, 1),
-                            new ItemStack(Material.AIR, fishToCatch)), null, null, null, null, null, null, null);
-                    return null;
-                });
             }
+
+            dispatchedQuestIDs.addAll(dispatchMultiplayerEverything(quest, type,
+                    (final IQuester q, final IQuest cq) -> {
+                        if (!dispatchedQuestIDs.contains(cq.getId())) {
+                            q.getQuestData(quest).setFishCaught(newFishCaught);
+                            if (q.testComplete(quest)) {
+                                quest.nextStage(q, false);
+                            }
+                        }
+                        return null;
+                    }));
         }
         
         final QuesterPostUpdateObjectiveEvent postEvent = new QuesterPostUpdateObjectiveEvent(this, quest, 
@@ -2735,6 +3580,7 @@ public class Quester implements IQuester {
             }
         }
         final ObjectiveType type = ObjectiveType.KILL_MOB;
+        final Set<String> dispatchedQuestIDs = new HashSet<>();
         final QuesterPreUpdateObjectiveEvent preEvent = new QuesterPreUpdateObjectiveEvent(this, quest, 
                 new BukkitObjective(type, mobsKilled, mobsToKill));
         plugin.getServer().getPluginManager().callEvent(preEvent);
@@ -2745,15 +3591,23 @@ public class Quester implements IQuester {
             if (newMobsKilled >= mobsToKill) {
                 finishObjective(quest, new BukkitObjective(type, new ItemStack(Material.AIR, 1),
                         new ItemStack(Material.AIR, mobsToKill)), entityType, null, null, null, null, null, null);
-                
-                // Multiplayer
-                dispatchMultiplayerObjectives(quest, currentStage, (final IQuester q) -> {
-                    q.getQuestData(quest).mobNumKilled.set(index, newMobsKilled);
-                    q.finishObjective(quest, new BukkitObjective(type, new ItemStack(Material.AIR, 1),
-                            new ItemStack(Material.AIR, mobsToKill)), entityType, null, null, null, null, null, null);
-                    return null;
-                });
             }
+
+            dispatchedQuestIDs.addAll(dispatchMultiplayerEverything(quest, type,
+                    (final IQuester q, final IQuest cq) -> {
+                        if (!dispatchedQuestIDs.contains(cq.getId())) {
+                            final int i = q.getCurrentStage(cq).getMobsToKill().indexOf(entityType);
+                            if (i == -1) {
+                                return null;
+                            }
+                            final int kills = q.getQuestData(quest).getMobNumKilled().get(i);
+                            q.getQuestData(quest).mobNumKilled.set(index, kills + 1);
+                            if (q.testComplete(quest)) {
+                                quest.nextStage(q, false);
+                            }
+                        }
+                        return null;
+                    }));
         }
         
         final QuesterPostUpdateObjectiveEvent postEvent = new QuesterPostUpdateObjectiveEvent(this, quest, 
@@ -2784,6 +3638,7 @@ public class Quester implements IQuester {
         final int playersToKill = currentStage.getPlayersToKill();
         
         final ObjectiveType type = ObjectiveType.KILL_PLAYER;
+        final Set<String> dispatchedQuestIDs = new HashSet<>();
         final QuesterPreUpdateObjectiveEvent preEvent = new QuesterPreUpdateObjectiveEvent(this, quest, 
                 new BukkitObjective(type, playersKilled, playersToKill));
         plugin.getServer().getPluginManager().callEvent(preEvent);
@@ -2794,15 +3649,19 @@ public class Quester implements IQuester {
             if (newPlayersKilled >= playersToKill) {
                 finishObjective(quest, new BukkitObjective(type, new ItemStack(Material.AIR, 1),
                         new ItemStack(Material.AIR, playersToKill)), null, null, null, null, null, null, null);
-                
-                // Multiplayer
-                dispatchMultiplayerObjectives(quest, getCurrentStage(quest), (final IQuester q) -> {
-                    q.getQuestData(quest).setPlayersKilled(getQuestData(quest).getPlayersKilled());
-                    q.finishObjective(quest, new BukkitObjective(type, new ItemStack(Material.AIR, 1),
-                            new ItemStack(Material.AIR, playersToKill)), null, null, null, null, null, null, null);
-                    return null;
-                });
             }
+
+            dispatchedQuestIDs.addAll(dispatchMultiplayerEverything(quest, type,
+                    (final IQuester q, final IQuest cq) -> {
+                        if (!dispatchedQuestIDs.contains(cq.getId())) {
+                            final int kills = q.getQuestData(quest).getPlayersKilled();
+                            q.getQuestData(quest).setPlayersKilled(kills + 1);
+                            if (q.testComplete(quest)) {
+                                quest.nextStage(q, false);
+                            }
+                        }
+                        return null;
+                    }));
         }
         
         final QuesterPostUpdateObjectiveEvent postEvent = new QuesterPostUpdateObjectiveEvent(this, quest, 
@@ -2847,6 +3706,7 @@ public class Quester implements IQuester {
                 if (toReach.distanceSquared(location) <= radius * radius) {
                     if (!getQuestData(quest).locationsReached.get(index)) {
                         final ObjectiveType type = ObjectiveType.REACH_LOCATION;
+                        final Set<String> dispatchedQuestIDs = new HashSet<>();
                         final QuesterPreUpdateObjectiveEvent preEvent 
                                 = new QuesterPreUpdateObjectiveEvent(this, quest, 
                                 new BukkitObjective(type, locationsReached, locationsToReach));
@@ -2854,18 +3714,19 @@ public class Quester implements IQuester {
                         
                         getQuestData(quest).locationsReached.set(index, true);
                         finishObjective(quest, new BukkitObjective(type, new ItemStack(Material.AIR, 1),
-                                new ItemStack(Material.AIR, 1)), null, null, null, toReach, null, null,
-                                null);
-                        
-                        // Multiplayer
-                        final int finalIndex = index;
-                        dispatchMultiplayerObjectives(quest, getCurrentStage(quest), (final IQuester q) -> {
-                            q.getQuestData(quest).locationsReached.set(finalIndex, true);
-                            q.finishObjective(quest, new BukkitObjective(type, new ItemStack(Material.AIR, 1),
-                                    new ItemStack(Material.AIR, 1)), null, null, null, toReach, null,
-                                    null, null);
-                            return null;
-                        });
+                                new ItemStack(Material.AIR, 1)), null, null, null, toReach, null, null, null);
+
+                        int finalIndex = index;
+                        dispatchedQuestIDs.addAll(dispatchMultiplayerEverything(quest, type,
+                                (final IQuester q, final IQuest cq) -> {
+                                    if (!dispatchedQuestIDs.contains(cq.getId())) {
+                                        q.getQuestData(quest).locationsReached.set(finalIndex, true);
+                                        if (q.testComplete(quest)) {
+                                            quest.nextStage(q, false);
+                                        }
+                                    }
+                                    return null;
+                                }));
                         
                         final QuesterPostUpdateObjectiveEvent postEvent 
                                 = new QuesterPostUpdateObjectiveEvent(this, quest, 
@@ -2914,6 +3775,7 @@ public class Quester implements IQuester {
         final int mobsTamed = questData.mobsTamed.get(index);
         
         final ObjectiveType type = ObjectiveType.TAME_MOB;
+        final Set<String> dispatchedQuestIDs = new HashSet<>();
         final QuesterPreUpdateObjectiveEvent preEvent = new QuesterPreUpdateObjectiveEvent(this, quest,
                 new BukkitObjective(type, mobsToTame, mobsTamed));
         plugin.getServer().getPluginManager().callEvent(preEvent);
@@ -2924,15 +3786,18 @@ public class Quester implements IQuester {
             if (newMobsToTame >= mobsToTame) {
                 finishObjective(quest, new BukkitObjective(type, new ItemStack(Material.AIR, 1),
                         new ItemStack(Material.AIR, mobsToTame)), entityType, null, null, null, null, null, null);
-                
-                // Multiplayer
-                dispatchMultiplayerObjectives(quest, getCurrentStage(quest), (final IQuester q) -> {
-                    q.getQuestData(quest).mobsTamed.set(index, newMobsToTame);
-                    q.finishObjective(quest, new BukkitObjective(type, new ItemStack(Material.AIR, 1),
-                            new ItemStack(Material.AIR, mobsToTame)), entityType, null, null, null, null, null, null);
-                    return null;
-                });
             }
+
+            dispatchedQuestIDs.addAll(dispatchMultiplayerEverything(quest, type,
+                    (final IQuester q, final IQuest cq) -> {
+                        if (!dispatchedQuestIDs.contains(cq.getId())) {
+                            q.getQuestData(quest).mobsTamed.set(index, newMobsToTame);
+                            if (q.testComplete(quest)) {
+                                quest.nextStage(q, false);
+                            }
+                        }
+                        return null;
+                    }));
         }
         
         final QuesterPostUpdateObjectiveEvent postEvent = new QuesterPostUpdateObjectiveEvent(this, quest, 
@@ -2965,6 +3830,7 @@ public class Quester implements IQuester {
         final int sheepSheared = questData.sheepSheared.get(index);
         
         final ObjectiveType type = ObjectiveType.SHEAR_SHEEP;
+        final Set<String> dispatchedQuestIDs = new HashSet<>();
         final QuesterPreUpdateObjectiveEvent preEvent = new QuesterPreUpdateObjectiveEvent(this, quest, 
                 new BukkitObjective(type, sheepSheared, sheepToShear));
         plugin.getServer().getPluginManager().callEvent(preEvent);
@@ -2975,15 +3841,18 @@ public class Quester implements IQuester {
             if (newSheepSheared >= sheepToShear) {
                 finishObjective(quest, new BukkitObjective(type, new ItemStack(Material.AIR, 1),
                         new ItemStack(Material.AIR, sheepToShear)), null, null, null, null, color, null, null);
-                
-                // Multiplayer
-                dispatchMultiplayerObjectives(quest, getCurrentStage(quest), (final IQuester q) -> {
-                    q.getQuestData(quest).sheepSheared.set(index, newSheepSheared);
-                    q.finishObjective(quest, new BukkitObjective(type, new ItemStack(Material.AIR, 1),
-                            new ItemStack(Material.AIR, sheepToShear)), null, null, null, null, color, null, null);
-                    return null;
-                });
             }
+
+            dispatchedQuestIDs.addAll(dispatchMultiplayerEverything(quest, type,
+                    (final IQuester q, final IQuest cq) -> {
+                        if (!dispatchedQuestIDs.contains(cq.getId())) {
+                            q.getQuestData(quest).sheepSheared.set(index, newSheepSheared);
+                            if (q.testComplete(quest)) {
+                                quest.nextStage(q, false);
+                            }
+                        }
+                        return null;
+                    }));
         }
         
         final QuesterPostUpdateObjectiveEvent postEvent = new QuesterPostUpdateObjectiveEvent(this, quest, 
@@ -2999,6 +3868,7 @@ public class Quester implements IQuester {
      */
     public void sayPassword(final IQuest quest, final AsyncPlayerChatEvent evt) {
         final ObjectiveType type = ObjectiveType.PASSWORD;
+        final Set<String> dispatchedQuestIDs = new HashSet<>();
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             final QuesterPreUpdateObjectiveEvent preEvent = new QuesterPreUpdateObjectiveEvent(this, quest,
                     new BukkitObjective(type, 1, 1));
@@ -3010,19 +3880,22 @@ public class Quester implements IQuester {
                     final String display = getCurrentStage(quest).getPasswordDisplays().get(index);
                     getQuestData(quest).passwordsSaid.set(index, true);
 
-                    final int finalIndex = index;
                     plugin.getServer().getScheduler().runTask(plugin, () -> {
                         finishObjective(quest, new BukkitObjective(type, new ItemStack(Material.AIR, 1),
                                 new ItemStack(Material.AIR, 1)), null, null, null, null, null, display, null);
-
-                        // Multiplayer
-                        dispatchMultiplayerObjectives(quest, getCurrentStage(quest), (final IQuester q) -> {
-                            q.getQuestData(quest).passwordsSaid.set(finalIndex, true);
-                            q.finishObjective(quest, new BukkitObjective(type, new ItemStack(Material.AIR, 1),
-                                    new ItemStack(Material.AIR, 1)), null, null, null, null, null, display, null);
-                            return null;
-                        });
                     });
+
+                    final int finalIndex = index;
+                    dispatchedQuestIDs.addAll(dispatchMultiplayerEverything(quest, type,
+                            (final IQuester q, final IQuest cq) -> {
+                                if (!dispatchedQuestIDs.contains(cq.getId())) {
+                                    q.getQuestData(quest).passwordsSaid.set(finalIndex, true);
+                                    if (q.testComplete(quest)) {
+                                        quest.nextStage(q, false);
+                                    }
+                                }
+                                return null;
+                            }));
                     break;
                 }
                 index++;
@@ -3046,7 +3919,7 @@ public class Quester implements IQuester {
      * @param extra
      *            Extra mob enum like career or ocelot type, if any
      * @param npc
-     *            NPC being talked to or killed, if any
+     *            UUID of NPC being talked to or killed, if any
      * @param location
      *            Location for user to reach, if any
      * @param color
@@ -3058,12 +3931,17 @@ public class Quester implements IQuester {
      */
     @SuppressWarnings("deprecation")
     public void finishObjective(final IQuest quest, final Objective objective, final EntityType mob,
-                                final String extra, final NPC npc, final Location location, final DyeColor color,
+                                final String extra, final UUID npc, final Location location, final DyeColor color,
                                 final String pass, final ICustomObjective co) {
         if (objective == null) {
             return;
         }
         final Player p = getPlayer();
+        final ObjectiveType type = objective.getType();
+        final ItemStack increment = objective.getGoalObject() instanceof ItemStack ? (ItemStack) objective.getProgressObject()
+                : new ItemStack(Material.AIR, objective.getProgress());
+        final ItemStack goal = objective.getGoalObject() instanceof ItemStack ? (ItemStack) objective.getGoalObject()
+                : new ItemStack(Material.AIR, objective.getGoal());
         if (!getCurrentStage(quest).getObjectiveOverrides().isEmpty()) {
             for (final String s: getCurrentStage(quest).getObjectiveOverrides()) {
                 String message = ChatColor.GREEN + "(" + Lang.get(p, "completed") + ") " 
@@ -3072,57 +3950,356 @@ public class Quester implements IQuester {
                     message = PlaceholderAPI.setPlaceholders(p, message);
                 }
             }
-        } 
+        } else if (type.equals(ObjectiveType.BREAK_BLOCK)) {
+            String message = ChatColor.GREEN + "(" + Lang.get(p, "completed") + ") " + Lang.get(p, "break");
+            if (message.contains("<count>")) {
+                message = message.replace("<count>", "" + ChatColor.GREEN + goal.getAmount() + "/" + goal.getAmount());
+            } else {
+                // Legacy
+                message += " <item>" + ChatColor.GREEN + ": " + goal.getAmount() + "/" + goal.getAmount();
+            }
+            if (plugin.getSettings().canTranslateNames() && !goal.hasItemMeta()
+                    && !goal.getItemMeta().hasDisplayName()) {
+                if (!plugin.getLocaleManager().sendMessage(p, message, increment.getType(), increment.getDurability(),
+                        null)) {
+                    sendMessage(message.replace("<item>", ItemUtil.getName(increment)));
+                }
+            } else {
+                sendMessage(message.replace("<item>", ItemUtil.getName(increment)));
+            }
+        } else if (type.equals(ObjectiveType.DAMAGE_BLOCK)) {
+            String message = ChatColor.GREEN + "(" + Lang.get(p, "completed") + ") " + Lang.get(p, "damage");
+            if (message.contains("<count>")) {
+                message = message.replace("<count>", "" + ChatColor.GREEN + goal.getAmount() + "/" + goal.getAmount());
+            } else {
+                // Legacy
+                message += " <item>" + ChatColor.GREEN + ": " + goal.getAmount() + "/" + goal.getAmount();
+            }
+            if (plugin.getSettings().canTranslateNames() && !goal.hasItemMeta() 
+                    && !goal.getItemMeta().hasDisplayName()) {
+                if (!plugin.getLocaleManager().sendMessage(p, message, increment.getType(), increment.getDurability(),
+                        null)) {
+                    sendMessage(message.replace("<item>", ItemUtil.getName(increment)));
+                }
+            } else {
+                sendMessage(message.replace("<item>", ItemUtil.getName(increment)));
+            }
+        } else if (type.equals(ObjectiveType.PLACE_BLOCK)) {
+            String message = ChatColor.GREEN + "(" + Lang.get(p, "completed") + ") " + Lang.get(p, "place");
+            if (message.contains("<count>")) {
+                message = message.replace("<count>", "" + ChatColor.GREEN + goal.getAmount() + "/" + goal.getAmount());
+            } else {
+                // Legacy
+                message += " <item>" + ChatColor.GREEN + ": " + goal.getAmount() + "/" + goal.getAmount();
+            }
+            if (plugin.getSettings().canTranslateNames() && !goal.hasItemMeta() 
+                    && !goal.getItemMeta().hasDisplayName()) {
+                if (!plugin.getLocaleManager().sendMessage(p, message, increment.getType(), increment.getDurability(),
+                        null)) {
+                    sendMessage(message.replace("<item>", ItemUtil.getName(increment)));
+                }
+            } else {
+                sendMessage(message.replace("<item>", ItemUtil.getName(increment)));
+            }
+        } else if (type.equals(ObjectiveType.USE_BLOCK)) {
+            String message = ChatColor.GREEN + "(" + Lang.get(p, "completed") + ") " + Lang.get(p, "use");
+            if (message.contains("<count>")) {
+                message = message.replace("<count>", "" + ChatColor.GREEN + goal.getAmount() + "/" + goal.getAmount());
+            } else {
+                // Legacy
+                message += " <item>" + ChatColor.GREEN + ": " + goal.getAmount() + "/" + goal.getAmount();
+            }
+            if (plugin.getSettings().canTranslateNames() && !goal.hasItemMeta() 
+                    && !goal.getItemMeta().hasDisplayName()) {
+                if (!plugin.getLocaleManager().sendMessage(p, message, increment.getType(), increment.getDurability(),
+                        null)) {
+                    sendMessage(message.replace("<item>", ItemUtil.getName(increment)));
+                }
+            } else {
+                sendMessage(message.replace("<item>", ItemUtil.getName(increment)));
+            }
+        } else if (type.equals(ObjectiveType.CUT_BLOCK)) {
+            String message = ChatColor.GREEN + "(" + Lang.get(p, "completed") + ") " + Lang.get(p, "cut");
+            if (message.contains("<count>")) {
+                message = message.replace("<count>", "" + ChatColor.GREEN + goal.getAmount() + "/" + goal.getAmount());
+            } else {
+                // Legacy
+                message += " <item>" + ChatColor.GREEN + ": " + goal.getAmount() + "/" + goal.getAmount();
+            }
+            if (plugin.getSettings().canTranslateNames() && !goal.hasItemMeta() 
+                    && !goal.getItemMeta().hasDisplayName()) {
+                if (!plugin.getLocaleManager().sendMessage(p, message, increment.getType(), increment.getDurability(),
+                        null)) {
+                    sendMessage(message.replace("<item>", ItemUtil.getName(increment)));
+                }
+            } else {
+                sendMessage(message.replace("<item>", ItemUtil.getName(increment)));
+            }
+        } else if (type.equals(ObjectiveType.CRAFT_ITEM)) {
+            final ItemStack is = getCurrentStage(quest).getItemsToCraft().get(getCurrentStage(quest).getItemsToCraft()
+                    .indexOf(goal));
+            String message = ChatColor.GREEN + "(" + Lang.get(p, "completed") + ") " + Lang.get(p, "craftItem");
+            if (message.contains("<count>")) {
+                message = message.replace("<count>", "" + ChatColor.GREEN + is.getAmount() + "/" + is.getAmount());
+            } else {
+                // Legacy
+                message += ChatColor.GREEN + ": " + is.getAmount() + "/" + is.getAmount();
+            }
+            if (plugin.getSettings().canTranslateNames() && !goal.hasItemMeta() 
+                    && !goal.getItemMeta().hasDisplayName()) {
+                if (!plugin.getLocaleManager().sendMessage(p, message, goal.getType(), goal.getDurability(), null)) {
+                    sendMessage(message.replace("<item>", ItemUtil.getName(is)));
+                }
+            } else {
+                sendMessage(message.replace("<item>", ItemUtil.getName(is)));
+            }
+        } else if (type.equals(ObjectiveType.SMELT_ITEM)) {
+            final ItemStack is = getCurrentStage(quest).getItemsToSmelt().get(getCurrentStage(quest).getItemsToSmelt()
+                    .indexOf(goal));
+            String message = ChatColor.GREEN + "(" + Lang.get(p, "completed") + ") " + Lang.get(p, "smeltItem");
+            if (message.contains("<count>")) {
+                message = message.replace("<count>", "" + ChatColor.GREEN + is.getAmount() + "/" + is.getAmount());
+            } else {
+                // Legacy
+                message += ChatColor.GREEN + ": " + is.getAmount() + "/" + is.getAmount();
+            }
+            if (plugin.getSettings().canTranslateNames() && !goal.hasItemMeta() 
+                    && !goal.getItemMeta().hasDisplayName()) {
+                if (!plugin.getLocaleManager().sendMessage(p, message, goal.getType(), goal.getDurability(), null)) {
+                    sendMessage(message.replace("<item>", ItemUtil.getName(is)));
+                }
+            } else {
+                sendMessage(message.replace("<item>", ItemUtil.getName(is)));
+            }
+        } else if (type.equals(ObjectiveType.ENCHANT_ITEM)) {
+            final ItemStack is = getCurrentStage(quest).getItemsToEnchant().get(getCurrentStage(quest)
+                    .getItemsToEnchant().indexOf(goal));
+            String message = ChatColor.GREEN + "(" + Lang.get(p, "completed") + ") " + Lang.get(p, "enchItem");
+            if (message.contains("<count>")) {
+                message = message.replace("<count>", "" + ChatColor.GREEN + is.getAmount() + "/" + is.getAmount());
+            } else {
+                // Legacy
+                message += ChatColor.GREEN + ": " + is.getAmount() + "/" + is.getAmount();
+            }
+            if (plugin.getSettings().canTranslateNames() && is.hasItemMeta() && !is.getItemMeta().hasDisplayName()) {
+                // Bukkit version is 1.9+
+                if (!plugin.getLocaleManager().sendMessage(p, message, goal.getType(), goal.getDurability(),
+                        goal.getEnchantments(), goal.getItemMeta())) {
+                    for (final Entry<Enchantment, Integer> e : is.getEnchantments().entrySet()) {
+                        sendMessage(message.replace("<item>", ItemUtil.getName(is))
+                                .replace("<enchantment>", ItemUtil.getPrettyEnchantmentName(e.getKey()))
+                                .replace("<level>", RomanNumeral.getNumeral(e.getValue())));
+                    }
+                }
+            } else if (plugin.getSettings().canTranslateNames() && !is.hasItemMeta()
+                    && Material.getMaterial("LINGERING_POTION") == null) {
+                // Bukkit version is below 1.9
+                if (!plugin.getLocaleManager().sendMessage(p, message, goal.getType(), goal.getDurability(),
+                        goal.getEnchantments())) {
+                    for (final Entry<Enchantment, Integer> e : is.getEnchantments().entrySet()) {
+                        sendMessage(message.replace("<item>", ItemUtil.getName(is))
+                                .replace("<enchantment>", ItemUtil.getPrettyEnchantmentName(e.getKey()))
+                                .replace("<level>", RomanNumeral.getNumeral(e.getValue())));
+                    }
+                }
+            } else {
+                for (final Entry<Enchantment, Integer> e : is.getEnchantments().entrySet()) {
+                    sendMessage(message.replace("<item>", ItemUtil.getName(is))
+                            .replace("<enchantment>", ItemUtil.getPrettyEnchantmentName(e.getKey()))
+                            .replace("<level>", RomanNumeral.getNumeral(e.getValue())));
+                }
+            }
+        } else if (type.equals(ObjectiveType.BREW_ITEM)) {
+            final ItemStack is = getCurrentStage(quest).getItemsToBrew().get(getCurrentStage(quest).getItemsToBrew()
+                    .indexOf(goal));
+            String message = ChatColor.GREEN + "(" + Lang.get(p, "completed") + ") " + Lang.get(p, "brewItem");
+            if (message.contains("<count>")) {
+                message = message.replace("<count>", "" + ChatColor.GREEN + is.getAmount() + "/" + is.getAmount());
+            } else {
+                // Legacy
+                message += ChatColor.GREEN + ": " + is.getAmount() + "/" + is.getAmount();
+            }
+            if (plugin.getSettings().canTranslateNames() && is.hasItemMeta() && !is.getItemMeta().hasDisplayName()) {
+                // Bukkit version is 1.9+
+                if (!plugin.getLocaleManager().sendMessage(p, message, goal.getType(), goal.getDurability(),
+                        goal.getEnchantments(), goal.getItemMeta())) {
+                    sendMessage(message.replace("<item>", ItemUtil.getName(is)));
+                }
+            } else if (plugin.getSettings().canTranslateNames() && !is.hasItemMeta()
+                    && Material.getMaterial("LINGERING_POTION") == null) {
+                // Bukkit version is below 1.9
+                if (!plugin.getLocaleManager().sendMessage(p, message, goal.getType(), goal.getDurability(),
+                        goal.getEnchantments())) {
+                    sendMessage(message.replace("<item>", ItemUtil.getName(is)));
+                }
+            } else {
+                sendMessage(message.replace("<item>", ItemUtil.getName(is)));
+            }
+        } else if (type.equals(ObjectiveType.CONSUME_ITEM)) {
+            final ItemStack is = getCurrentStage(quest).getItemsToConsume().get(getCurrentStage(quest)
+                    .getItemsToConsume().indexOf(goal));
+            String message = ChatColor.GREEN + "(" + Lang.get(p, "completed") + ") " + Lang.get(p, "consumeItem");
+            if (message.contains("<count>")) {
+                message = message.replace("<count>", "" + ChatColor.GREEN + is.getAmount() + "/" + is.getAmount());
+            } else {
+                // Legacy
+                message += ChatColor.GREEN + ": " + is.getAmount() + "/" + is.getAmount();
+            }
+            if (plugin.getSettings().canTranslateNames() && !goal.hasItemMeta() 
+                    && !goal.getItemMeta().hasDisplayName()) {
+                if (!plugin.getLocaleManager().sendMessage(p, message, goal.getType(), goal.getDurability(), null)) {
+                    sendMessage(message.replace("<item>", ItemUtil.getName(is)));
+                }
+            } else {
+                sendMessage(message.replace("<item>", ItemUtil.getName(is)));
+            }
+        } else if (type.equals(ObjectiveType.DELIVER_ITEM)) {
+            final ItemStack is = getCurrentStage(quest).getItemsToDeliver().get(getCurrentStage(quest)
+                    .getItemsToDeliver().indexOf(goal));
+            String message = ChatColor.GREEN + "(" + Lang.get(p, "completed") + ") " + Lang.get(p, "deliver")
+                    .replace("<npc>", plugin.getDependencies().getNPCName(getCurrentStage(quest)
+                    .getItemDeliveryTargets().get(getCurrentStage(quest).getItemsToDeliver().indexOf(goal))));
+            if (message.contains("<count>")) {
+                message = message.replace("<count>", "" + ChatColor.GREEN + is.getAmount() + "/" + is.getAmount());
+            } else {
+                // Legacy
+                message += ChatColor.GREEN + ": " + is.getAmount() + "/" + is.getAmount();
+            }
+            if (plugin.getSettings().canTranslateNames() && !goal.hasItemMeta()
+                    && !goal.getItemMeta().hasDisplayName()) {
+                if (!plugin.getLocaleManager().sendMessage(p, message, is.getType(), is.getDurability(), null)) {
+                    sendMessage(message.replace("<item>", ItemUtil.getName(is)));
+                }
+            } else {
+                sendMessage(message.replace("<item>", ItemUtil.getName(is)));
+            }
+        } else if (type.equals(ObjectiveType.MILK_COW)) {
+            String message = ChatColor.GREEN + "(" + Lang.get(p, "completed") + ") " + Lang.get(p, "milkCow");
+            if (message.contains("<count>")) {
+                message = message.replace("<count>", "" + ChatColor.GREEN + goal.getAmount() + "/" + goal.getAmount());
+            } else {
+                // Legacy
+                message += ChatColor.GREEN + ": " + goal.getAmount() + "/" + goal.getAmount();
+            }
+            sendMessage(message);
+        } else if (type.equals(ObjectiveType.CATCH_FISH)) {
+            String message = ChatColor.GREEN + "(" + Lang.get(p, "completed") + ") " + Lang.get(p, "catchFish");
+            if (message.contains("<count>")) {
+                message = message.replace("<count>", "" + ChatColor.GREEN + goal.getAmount() + "/" + goal.getAmount());
+            } else {
+                // Legacy
+                message += ChatColor.GREEN + ": " + goal.getAmount() + "/" + goal.getAmount();
+            }
+            sendMessage(message);
+        } else if (type.equals(ObjectiveType.KILL_MOB)) {
+            String message = ChatColor.GREEN + "(" + Lang.get(p, "completed") + ") " + Lang.get(p, "kill");
+            if (message.contains("<count>")) {
+                message = message.replace("<count>", "" + ChatColor.GREEN + goal.getAmount() + "/" + goal.getAmount());
+            } else {
+                // Legacy
+                message += ChatColor.AQUA + " <mob>" + ChatColor.GREEN + ": " + goal.getAmount() + "/"
+                        + goal.getAmount();
+            }
+            if (plugin.getSettings().canTranslateNames()) {
+                if (!plugin.getLocaleManager().sendMessage(p, message, mob, extra)) {
+                    sendMessage(message.replace("<mob>", MiscUtil.snakeCaseToUpperCamelCase(mob.name())));
+                }
+            } else {
+                sendMessage(message.replace("<mob>", MiscUtil.snakeCaseToUpperCamelCase(mob.name())));
+            }
+        } else if (type.equals(ObjectiveType.KILL_PLAYER)) {
+            String message = ChatColor.GREEN + "(" + Lang.get(p, "completed") + ") " + Lang.get(p, "killPlayer");
+            if (message.contains("<count>")) {
+                message = message.replace("<count>", "" + ChatColor.GREEN + goal.getAmount() + "/" + goal.getAmount());
+            } else {
+                // Legacy
+                message += ChatColor.GREEN + ": " + goal.getAmount() + "/" + goal.getAmount();
+            }
+            sendMessage(message);
+        } else if (type.equals(ObjectiveType.TALK_TO_NPC)) {
+            final String message = ChatColor.GREEN + "(" + Lang.get(p, "completed") + ") " + Lang.get(p, "talkTo")
+                    .replace("<npc>", plugin.getDependencies().getNPCName(npc));
+            sendMessage(message);
+        } else if (type.equals(ObjectiveType.KILL_NPC)) {
+            String message = ChatColor.GREEN + "(" + Lang.get(p, "completed") + ") " + Lang.get(p, "kill");
+            if (message.contains("<count>")) {
+                message = message.replace("<count>", "" + ChatColor.GREEN + goal.getAmount() + "/" + goal.getAmount());
+            } else {
+                // Legacy
+                message += ChatColor.AQUA + " <mob>" + ChatColor.GREEN + ": " + goal.getAmount() + "/"
+                        + goal.getAmount();
+            }
+            sendMessage(message.replace("<mob>", plugin.getDependencies().getNPCName(npc)));
+        } else if (type.equals(ObjectiveType.TAME_MOB)) {
+            String message = ChatColor.GREEN + "(" + Lang.get(p, "completed") + ") " + Lang.get(p, "tame");
+            if (!message.contains("<mob>")) {
+                message += " <mob>";
+            }
+            if (message.contains("<count>")) {
+                message = message.replace("<count>", "" + ChatColor.GREEN + goal.getAmount() + "/" + goal.getAmount());
+            } else {
+                // Legacy
+                message += ChatColor.GREEN + ": " + goal.getAmount() + "/" + goal.getAmount();
+            }
+            if (plugin.getSettings().canTranslateNames()) {
+                if (!plugin.getLocaleManager().sendMessage(p, message, mob, extra)) {
+                    sendMessage(message.replace("<mob>", MiscUtil.snakeCaseToUpperCamelCase(mob.name())));
+                }
+            } else {
+                sendMessage(message.replace("<mob>", MiscUtil.snakeCaseToUpperCamelCase(mob.name())));
+            }
+        } else if (type.equals(ObjectiveType.SHEAR_SHEEP)) {
+            String message = ChatColor.GREEN + "(" + Lang.get(p, "completed") + ") " + Lang.get(p, "shearSheep");
+            message = message.replace("<color>", MiscUtil.getPrettyDyeColorName(color));
+            if (message.contains("<count>")) {
+                message = message.replace("<count>", "" + ChatColor.GREEN + goal.getAmount() + "/" + goal.getAmount());
+            } else {
+                // Legacy
+                message += ChatColor.GREEN + ": " + goal.getAmount() + "/" + goal.getAmount();
+            }
+            sendMessage(message);
+        } else if (type.equals(ObjectiveType.REACH_LOCATION)) {
+            String obj = Lang.get(p, "goTo");
+            try {
+                obj = obj.replace("<location>", getCurrentStage(quest).getLocationNames().get(getCurrentStage(quest)
+                        .getLocationsToReach().indexOf(location)));
+            } catch(final IndexOutOfBoundsException e) {
+                plugin.getLogger().severe("Unable to get final location " + location + " for quest ID " 
+                        + quest.getId() + ", please report on Github");
+                obj = obj.replace("<location>", "ERROR");
+            }
+            final String message = ChatColor.GREEN + "(" + Lang.get(p, "completed") + ") " + obj;
+            sendMessage(message);
+        } else if (type.equals(ObjectiveType.PASSWORD)) {
+            sendMessage(ChatColor.GREEN + "(" + Lang.get(p, "completed") + ") " + pass);
+        } else if (co != null) {
+            String message = ChatColor.GREEN + "(" + Lang.get(p, "completed") + ") " + co.getDisplay();
+            int index = -1;
+            for (int i = 0; i < getCurrentStage(quest).getCustomObjectives().size(); i++) {
+                if (getCurrentStage(quest).getCustomObjectives().get(i).getName().equals(co.getName())) {
+                    index = i;
+                    break;
+                }
+            }
+            final List<Entry<String, Object>> sub = new LinkedList<>(getCurrentStage(quest).getCustomObjectiveData()
+                    .subList(index, getCurrentStage(quest).getCustomObjectiveData().size()));
+            final List<Entry<String, Object>> end = new LinkedList<>(sub);
+            sub.clear(); // Since sub is backed by end, this removes all sub-list items from end
+            for (final Entry<String, Object> dataMap : end) {
+                message = message.replace("%" + (dataMap.getKey()) + "%", String.valueOf(dataMap.getValue()));
+            }
+            
+            if (co.canShowCount()) {
+                message = message.replace("%count%", goal.getAmount() + "/" + goal.getAmount());
+            }
+            sendMessage(ConfigUtil.parseString(ChatColor.translateAlternateColorCodes('&', message)));
+        }
+        dispatchMultiplayerObjectives(quest, getCurrentStage(quest), (final IQuester q) -> {
+            q.finishObjective(quest, objective, mob, extra, npc, location, color, pass, co);
+            return null;
+        });
         if (testComplete(quest)) {
             quest.nextStage(this, true);
-        }
-    }
-
-    /**
-     * Complete quest objective
-     * 
-     * @deprecated Use {@link #finishObjective(IQuest, Objective, EntityType,
-     * String, NPC, Location, DyeColor, String, ICustomObjective)}
-     * 
-     * @param quest
-     *            Quest containing the objective
-     * @param objective
-     *            Type of objective, e.g. "password" or "damageBlock"
-     * @param increment
-     *            Final amount material being applied
-     * @param goal
-     *            Total required amount of material
-     * @param enchantment
-     *            Enchantment being applied by user
-     * @param mob
-     *            Mob being killed or tamed
-     * @param extra
-     *            Extra mob enum like career or ocelot type
-     * @param npc
-     *            NPC being talked to or killed
-     * @param location
-     *            Location for user to reach
-     * @param color
-     *            Shear color
-     * @param pass
-     *            Password
-     * @param co
-     *            See CustomObjective class
-     */
-    @Deprecated
-    public void finishObjective(final IQuest quest, final String objective, final ItemStack increment,
-                                final ItemStack goal, final Enchantment enchantment, final EntityType mob,
-                                final String extra, final NPC npc, final Location location, final DyeColor color,
-                                final String pass, final ICustomObjective co) {
-        if (objective == null) {
-            return;
-        }
-        if (increment == null || goal == null) {
-            finishObjective(quest, new BukkitObjective(ObjectiveType.fromName(objective), 1, 1), mob, extra, npc,
-                    location, color, pass, co);
-        } else {
-            finishObjective(quest, new BukkitObjective(ObjectiveType.fromName(objective), increment, goal), mob, extra,
-                    npc, location, color, pass, co);
         }
     }
     
@@ -3257,14 +4434,14 @@ public class Quester implements IQuester {
                 data.itemsDelivered.add(temp);
             }
         }
-        if (!quest.getStage(stage).getCitizensToInteract().isEmpty()) {
-            for (final Integer ignored : quest.getStage(stage).getCitizensToInteract()) {
-                data.citizensInteracted.add(false);
+        if (!quest.getStage(stage).getNpcsToInteract().isEmpty()) {
+            for (final UUID ignored : quest.getStage(stage).getNpcsToInteract()) {
+                data.npcsInteracted.add(false);
             }
         }
-        if (!quest.getStage(stage).getCitizensToKill().isEmpty()) {
-            for (final Integer ignored : quest.getStage(stage).getCitizensToKill()) {
-                data.citizensNumKilled.add(0);
+        if (!quest.getStage(stage).getNpcsToKill().isEmpty()) {
+            for (final UUID ignored : quest.getStage(stage).getNpcsToKill()) {
+                data.npcsNumKilled.add(0);
             }
         }
         if (!quest.getStage(stage).getMobsToKill().isEmpty()) {
@@ -3312,8 +4489,7 @@ public class Quester implements IQuester {
      */
     public boolean saveData() {
         try {
-            final Storage storage = plugin.getStorage();
-            storage.saveQuester(this);
+            plugin.getStorage().saveQuester(this).get();
         } catch (final Exception e) {
             return false;
         }
@@ -3448,11 +4624,11 @@ public class Quester implements IQuester {
                     }
                     questSec.set("item-delivery-amounts", deliveryAmounts);
                 }
-                if (!questData.citizensInteracted.isEmpty()) {
-                    questSec.set("has-talked-to", questData.citizensInteracted);
+                if (!questData.npcsInteracted.isEmpty()) {
+                    questSec.set("has-talked-to", questData.npcsInteracted);
                 }
-                if (!questData.citizensNumKilled.isEmpty()) {
-                    questSec.set("citizen-amounts-killed", questData.citizensNumKilled);
+                if (!questData.npcsNumKilled.isEmpty()) {
+                    questSec.set("npc-killed-amounts", questData.npcsNumKilled);
                 }
                 if (!questData.mobNumKilled.isEmpty()) {
                     questSec.set("mobs-killed-amounts", questData.mobNumKilled);
@@ -3646,13 +4822,17 @@ public class Quester implements IQuester {
     /**
      * Show an inventory GUI with quest items to the specified player
      * 
-     * @param npc The NPC from which the GUI is bound
+     * @param npc UUID of the NPC from which the GUI is bound
      * @param quests List of quests to use for displaying items
      */
-    public void showGUIDisplay(final NPC npc, final LinkedList<IQuest> quests) {
+    public void showGUIDisplay(final UUID npc, final LinkedList<IQuest> quests) {
         if (npc == null || quests == null) {
             return;
         }
+        if (plugin.getDependencies().getCitizens() == null) {
+            return;
+        }
+        final String name = plugin.getDependencies().getNPCName(npc);
         final LinkedList<Quest> qs = new LinkedList<>();
         for (IQuest q : quests) {
             qs.add((Quest) q);
@@ -3664,40 +4844,16 @@ public class Quester implements IQuester {
         }
         final Player player = getPlayer();
         final Inventory inv = plugin.getServer().createInventory(player, ((quests.size() / 9) + 1) * 9, 
-                Lang.get(player, "quests") + " | " + npc.getName());
+                Lang.get(player, "quests") + " | " + name);
         int i = 0;
         for (final IQuest quest : quests) {
-            if (quest.getGUIDisplay() != null) {
+            final Quest bukkitQuest = (Quest)quest;
+            if (bukkitQuest.getGUIDisplay() != null) {
                 if (i > 53) {
                     // Protocol-enforced size limit has been exceeded
                     break;
                 }
-                final ItemStack display = quest.getGUIDisplay();
-                final ItemMeta meta = display.getItemMeta();
-                if (meta != null) {
-                    if (completedQuests.contains(quest)) {
-                        meta.setDisplayName(ChatColor.DARK_PURPLE + ConfigUtil.parseString(quest.getName()
-                                + " " + ChatColor.GREEN + Lang.get(player, "redoCompleted"), npc));
-                    } else {
-                        meta.setDisplayName(ChatColor.DARK_PURPLE + ConfigUtil.parseString(quest.getName(), npc));
-                    }
-                    if (!meta.hasLore()) {
-                        final LinkedList<String> lines;
-                        String desc = quest.getDescription();
-                        if (plugin.getDependencies().getPlaceholderApi() != null) {
-                            desc = PlaceholderAPI.setPlaceholders(player, desc);
-                        }
-                        if (desc.equals(ChatColor.stripColor(desc))) {
-                            lines = MiscUtil.makeLines(desc, " ", 40, ChatColor.DARK_GREEN);
-                        } else {
-                            lines = MiscUtil.makeLines(desc, " ", 40, null);
-                        }
-                        meta.setLore(lines);
-                    }
-                    meta.addItemFlags(ItemFlag.values());
-                    display.setItemMeta(meta);
-                }
-                inv.setItem(i, display);
+                inv.setItem(i, bukkitQuest.prepareDisplay(this));
                 i++;
             }
         }
@@ -3975,8 +5131,6 @@ public class Quester implements IQuester {
                 if (q == null) {
                     continue;
                 }
-                // Share only same quest is not necessary here
-                // The function must be applied to the same quest
                 if ((q.getCurrentQuestsTemp().containsKey(quest) && currentStage.equals(q.getCurrentStage(quest)))) {
                     fun.apply(q);
                 }
@@ -4016,15 +5170,28 @@ public class Quester implements IQuester {
                                 if (!id.equals(getUUID())) {
                                     if (distanceSquared > 0) {
                                         final Player player = Bukkit.getPlayer(id);
-                                        if (player != null && distanceSquared >= getPlayer().getLocation()
-                                                .distanceSquared(player.getLocation())) {
-                                            mq.add(plugin.getQuester(id));
+                                        if (player != null) {
+                                            final Location locationOne = getPlayer().getLocation();
+                                            final Location locationTwo = player.getLocation();
+                                            if (locationOne.getWorld() != null && locationTwo.getWorld() != null) {
+                                                if (locationOne.getWorld().getName().equals(locationTwo.getWorld()
+                                                        .getName())) {
+                                                    if (distanceSquared >= getPlayer().getLocation()
+                                                            .distanceSquared(player.getLocation())) {
+                                                        mq.add(plugin.getQuester(id));
+                                                    }
+                                                }
+                                            }
                                         }
                                     } else {
                                         mq.add(plugin.getQuester(id));
                                     }
                                 }
                             }
+                        }
+                        if (plugin.getSettings().getConsoleLogging() > 3) {
+                            plugin.getLogger().info("Found " + mq.size() + " party members for quest ID "
+                                    + quest.getId() + " via Unite plugin");
                         }
                         return mq;
                     }
@@ -4069,6 +5236,10 @@ public class Quester implements IQuester {
                                 }
                             }
                         }
+                        if (plugin.getSettings().getConsoleLogging() > 3) {
+                            plugin.getLogger().info("Found " + mq.size() + " party members for quest ID "
+                                    + quest.getId() + " via Parties plugin");
+                        }
                         return mq;
                     }
                 }
@@ -4076,7 +5247,13 @@ public class Quester implements IQuester {
         }
         return mq;
     }
-    
+
+    /**
+     * Whether this Quester meets condition of given quest
+     *
+     * @param quest The quest to check
+     * @return Whether to send Quester reason for failure
+     */
     public boolean meetsCondition(final IQuest quest, final boolean giveReason) {
         final IStage stage = getCurrentStage(quest);
         if (stage != null && stage.getCondition() != null && !stage.getCondition().check(this, quest)) {
@@ -4085,12 +5262,16 @@ public class Quester implements IQuester {
                     getPlayer().sendMessage(ChatColor.RED + Lang.get(getPlayer(), "conditionFailQuit")
                         .replace("<quest>", quest.getName()));
                 }
+                if (stage.getFailAction() != null) {
+                    plugin.getServer().getScheduler().runTask(plugin, () ->
+                            getCurrentStage(quest).getFailAction().fire(this, quest));
+                }
                 hardQuit(quest);
             } else if (giveReason) {
                 if (System.currentTimeMillis() - lastNotifiedCondition > (plugin.getSettings().getConditionInterval()
                         * 1000L)) {
-                    getPlayer().sendMessage(ChatColor.YELLOW + Lang.get(getPlayer(), "conditionFailRetry")
-                            .replace("<quest>", quest.getName()));
+                    ActionBarProvider.sendActionBar(getPlayer(), ChatColor.YELLOW + Lang.get(getPlayer(),
+                            "conditionFailRetry").replace("<quest>", quest.getName()));
                     lastNotifiedCondition = System.currentTimeMillis();
                 }
             }
@@ -4098,7 +5279,12 @@ public class Quester implements IQuester {
         }
         return true;
     }
-    
+
+    /**
+     * Whether this Quester is currently selecting a block in editor
+     *
+     * @return true if selecting
+     */
     public boolean isSelectingBlock() {
         final UUID uuid = getPlayer().getUniqueId();
         return plugin.getQuestFactory().getSelectedBlockStarts().containsKey(uuid)
@@ -4110,7 +5296,12 @@ public class Quester implements IQuester {
                 || plugin.getActionFactory().getSelectedLightningLocations().containsKey(uuid)
                 || plugin.getActionFactory().getSelectedTeleportLocations().containsKey(uuid);
     }
-    
+
+    /**
+     * Whether this Quester is in the specified WorldGuard region
+     *
+     * @return true if in specified WorldGuard region
+     */
     public boolean isInRegion(final String regionID) {
         if (getPlayer() == null) {
             return false;
