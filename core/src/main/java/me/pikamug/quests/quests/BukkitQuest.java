@@ -2,9 +2,9 @@
  * Copyright (c) PikaMug and contributors
  *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT
- * LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. 
+ * LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
  * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
- * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE 
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
@@ -902,7 +902,7 @@ public class BukkitQuest implements Quest {
             }
             BukkitLang.send(p, ChatColor.GREEN + BukkitLang.get(p, "questRewardsTitle"));
             if (!issuedReward) {
-                p.sendMessage(ChatColor.GRAY + BukkitLang.get("none"));
+                p.sendMessage(ChatColor.GRAY + "- (" + BukkitLang.get("none") + ")");
             } else if (!rewards.getDetailsOverride().isEmpty()) {
                 for (final String s: rewards.getDetailsOverride()) {
                     String message = ChatColor.DARK_GREEN + BukkitConfigUtil.parseString(
@@ -910,7 +910,7 @@ public class BukkitQuest implements Quest {
                     if (plugin.getDependencies().getPlaceholderApi() != null) {
                         message = PlaceholderAPI.setPlaceholders(p, message);
                     }
-                    quester.sendMessage(message);
+                    quester.sendMessage("- " + message);
                 }
             } else {
                 if (rewards.getExp() > 0) {
@@ -1134,7 +1134,7 @@ public class BukkitQuest implements Quest {
         final BukkitQuesterPostFailQuestEvent postEvent = new BukkitQuesterPostFailQuestEvent((BukkitQuester) quester, this);
         plugin.getServer().getPluginManager().callEvent(postEvent);
     }
-    
+
     /**
      * Checks if quester is in WorldGuard region start
      * 
