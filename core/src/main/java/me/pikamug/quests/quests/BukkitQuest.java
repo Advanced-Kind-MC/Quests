@@ -902,7 +902,7 @@ public class BukkitQuest implements Quest {
             }
             BukkitLang.send(p, ChatColor.GREEN + BukkitLang.get(p, "questRewardsTitle"));
             if (!issuedReward) {
-                p.sendMessage(ChatColor.GRAY + Lang.get("none"));
+                p.sendMessage(ChatColor.GRAY + BukkitLang.get("none"));
             } else if (!rewards.getDetailsOverride().isEmpty()) {
                 for (final String s: rewards.getDetailsOverride()) {
                     String message = ChatColor.DARK_GREEN + BukkitConfigUtil.parseString(
