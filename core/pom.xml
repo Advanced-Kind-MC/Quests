@@ -4,7 +4,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>me.blackvein.quests</groupId>
+        <groupId>me.pikamug.quests</groupId>
         <artifactId>quests-parent</artifactId>
         <version>${revision}</version>
     </parent>
@@ -16,13 +16,18 @@
 
     <repositories>
         <repository>
-            <!-- DungeonsXL, LocaleLib, mcMMO Classic, PhatLoots, Unite -->
+            <!-- LocaleLib, mcMMO Classic, PhatLoots, Unite, ZNPCsPlus -->
             <id>jitpack.io</id>
             <url>https://jitpack.io</url>
         </repository>
         <repository>
             <id>spigot-repo</id>
             <url>https://hub.spigotmc.org/nexus/content/repositories/snapshots/</url>
+        </repository>
+        <repository>
+            <!-- NBT API -->
+            <id>codemc-repo</id>
+            <url>https://repo.codemc.org/repository/maven-public/</url>
         </repository>
         <repository>
             <!-- Citizens, Denizen -->
@@ -60,9 +65,10 @@
             <url>https://repo.codemc.io/repository/maven-snapshots/</url>
         </repository>
         <repository>
-            <!-- ZNPCsPlus -->
-            <id>znpcsplus-repo</id>
-            <url>https://repo.pyr.lol/releases</url>
+            <!-- Pyr's Repo (ZNPCsPlus 2.X) -->
+            <id>pyr-snapshots</id>
+            <name>Pyr's Repo</name>
+            <url>https://repo.pyr.lol/snapshots</url>
         </repository>
     </repositories>
 
@@ -124,7 +130,7 @@
         <dependency>
             <groupId>ro.niconeko</groupId>
             <artifactId>astralbooks-api</artifactId>
-            <version>3.0.1</version>
+            <version>3.0.3</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -140,49 +146,37 @@
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>lol.pyr</groupId>
+            <groupId>com.github.Pyrbu</groupId>
             <artifactId>ZNPCsPlus</artifactId>
-            <version>1.0.5</version>
+            <version>271b087586</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>lol.pyr</groupId>
+            <artifactId>znpcsplus-api</artifactId>
+            <version>2.0.0-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>com.github.PikaMug</groupId>
             <artifactId>Unite</artifactId>
-            <version>59dade0c7c</version>
+            <version>d0c4de0ca1</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>com.github.PikaMug</groupId>
             <artifactId>LocaleLib</artifactId>
-            <version>3.2</version>
+            <version>3.9</version>
+        </dependency>
+        <dependency>
+            <groupId>de.tr7zw</groupId>
+            <artifactId>item-nbt-api-plugin</artifactId>
+            <version>2.12.4</version>
         </dependency>
         <dependency>
             <groupId>xyz.upperlevel.spigot.book</groupId>
             <artifactId>spigot-book-api</artifactId>
             <version>1.6</version>
-        </dependency>
-        <dependency>
-            <groupId>mysql</groupId>
-            <artifactId>mysql-connector-java</artifactId>
-            <version>8.0.28</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>com.google.protobuf</groupId>
-                    <artifactId>protobuf-java</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-        <dependency>
-            <groupId>com.zaxxer</groupId>
-            <artifactId>HikariCP</artifactId>
-            <!-- Do not update until Java 11 is min -->
-            <version>4.0.3</version>
-            <exclusions>
-                <exclusion>
-                    <artifactId>slf4j-api</artifactId>
-                    <groupId>org.slf4j</groupId>
-                </exclusion>
-            </exclusions>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
@@ -195,7 +189,7 @@
             <version>2.17.1</version>
         </dependency>
         <dependency>
-            <groupId>me.blackvein.quests</groupId>
+            <groupId>me.pikamug.quests</groupId>
             <artifactId>quests-api</artifactId>
             <version>${project.version}</version>
             <scope>compile</scope>
@@ -223,10 +217,11 @@
             </resource>
             <resource>
                 <targetPath>.</targetPath>
-                <directory>${basedir}/</directory>
+                <directory>${basedir}</directory>
                 <filtering>false</filtering>
                 <includes>
                     <include>README.md</include>
+                    <include>LICENSE.txt</include>
                 </includes>
             </resource>
         </resources>
@@ -270,8 +265,7 @@
                         <includes>
                             <include>me.*</include>
                             <include>com.github.PikaMug:LocaleLib</include>
-                            <include>com.zaxxer:HikariCP</include>
-                            <include>mysql</include>
+                            <include>de.tr7zw:item-nbt-api-plugin</include>
                             <include>org.slf4j:slf4j-simple</include>
                             <include>org.slf4j:slf4j-api</include>
                             <include>xyz.upperlevel.spigot.book:spigot-book-api</include>
@@ -282,6 +276,7 @@
                             <artifact>*:*</artifact>
                             <excludes>
                                 <exclude>META-INF/*.MF</exclude>
+                                <exclude>LICENSE</exclude>
                             </excludes>
                         </filter>
                         <filter>
@@ -294,23 +289,19 @@
                     <relocations>
                         <relocation>
                             <pattern>me.pikamug.localelib</pattern>
-                            <shadedPattern>me.blackvein.quests.libs.localelib</shadedPattern>
+                            <shadedPattern>me.pikamug.quests.libs.localelib</shadedPattern>
                         </relocation>
                         <relocation>
-                            <pattern>com.zaxxer.hikari</pattern>
-                            <shadedPattern>me.blackvein.quests.libs.hikari</shadedPattern>
-                        </relocation>
-                        <relocation>
-                            <pattern>com.mysql</pattern>
-                            <shadedPattern>me.blackvein.quests.libs.mysql</shadedPattern>
+                            <pattern>de.tr7zw</pattern>
+                            <shadedPattern>me.pikamug.quests.libs.nbtapi</shadedPattern>
                         </relocation>
                         <relocation>
                             <pattern>org.slf4j</pattern>
-                            <shadedPattern>me.blackvein.quests.libs.slf4j</shadedPattern>
+                            <shadedPattern>me.pikamug.quests.libs.slf4j</shadedPattern>
                         </relocation>
                         <relocation>
                             <pattern>xyz.upperlevel.spigot.book</pattern>
-                            <shadedPattern>me.blackvein.quests.libs.bookutil</shadedPattern>
+                            <shadedPattern>me.pikamug.quests.libs.bookutil</shadedPattern>
                         </relocation>
                     </relocations>
                 </configuration>
